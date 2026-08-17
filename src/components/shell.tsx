@@ -49,10 +49,11 @@ import {
   miningOnHub,
 } from '@cloudsforge/ui'
 import { applyHead, surfaceMeta } from '@cloudsforge/ui/seo'
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useSession, useVoice, VoiceProvider } from '../lib/auth.tsx'
 import { activeTags, type ActiveTag } from '../lib/agora.ts'
+import { trackPageView } from '../lib/analytics.ts'
 import { count, hash } from '../lib/format.ts'
 import { hosts, placementIsKnown, PRODUCT, SURFACE_DESCRIPTION } from '../lib/hosts.ts'
 import { useResource } from '../lib/resource.ts'
@@ -66,6 +67,7 @@ export function AppShell() {
   const [viewed, setViewed] = useState<ViewedNetwork>(viewedNetwork())
   const { account, signIn, signOut } = useSession()
   const estate = hosts()
+  useNavigationReporting()
 
   return (
     <>
@@ -126,6 +128,42 @@ export function AppShell() {
       <CookieBanner />
     </>
   )
+}
+
+/**
+ * Report a client-side navigation, once per address, and never the first one.
+ *
+ * This is a single-page bundle: after the first load the browser never asks for another document,
+ * so the tag's own automatic page view fires exactly once and every subsequent move between the
+ * Square, a profile and a thread is invisible to it. Without this hook the count is "sessions",
+ * labelled "page views", and every route but the entry one reads as unvisited.
+ *
+ * TWO THINGS IT DELIBERATELY DOES NOT DO:
+ *
+ *   * It does not report the ENTRY address. `config` — pushed by the consent gate — sends that one
+ *     itself, and reporting it again here would double every arrival. `reported` starts null and
+ *     the first effect only records the address it found, which is also what makes this correct
+ *     under StrictMode's deliberate double-invoke: the second run sees its own pathname already
+ *     recorded and returns.
+ *   * It does not send the pathname anywhere. `trackPageView` hands it to the provider registered
+ *     in `lib/analytics.ts`, which turns `/v/nefeli` into `/v/:handle` before anything is pushed —
+ *     the whole point of that module, and the reason this hook passes a path rather than fields.
+ *
+ * Keyed on the pathname alone. A change of `search` is not a navigation worth counting here and
+ * the query string is the one part that is never reported anyway (`?q=` on `/search` is the
+ * reader's own words), so re-running on it would push a duplicate of the page just reported.
+ */
+function useNavigationReporting(): void {
+  const { pathname } = useLocation()
+  const reported = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (reported.current === pathname) return
+    const first = reported.current === null
+    reported.current = pathname
+    if (first) return
+    trackPageView(pathname)
+  }, [pathname])
 }
 
 /* ---- the left rail --------------------------------------------------- */

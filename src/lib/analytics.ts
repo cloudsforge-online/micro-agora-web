@@ -34,45 +34,40 @@
  * unmeasurable in GA. micro-agora counts its own posts server-side, where the data is already, and
  * that is the right place for it.
  *
- * ── WHY THIS IS HERE AND NOT IN @cloudsforge/ui ────────────────────────────────────────────────
+ * ── WHERE THE PUSHING HAPPENS, AND WHY IT IS NOT HERE ANY MORE ─────────────────────────────────
  *
- * `consent.ts` issues a plain `gtag('config', id, …)` with no page-field overrides and has no hook
- * for adding one; it is also owned by another repository. Redacting from this bundle is possible
- * because `gtag` is not a function Google gives you — it is a shim that pushes its arguments onto
- * `window.dataLayer`, and the tag reads that array in order whenever it finishes loading. So a
- * `set` queued BEFORE the tag arrives is applied before the tag's own first `page_view`. The shim
- * is reproduced below rather than imported because `consent.ts` keeps it module-private.
+ * This module used to reproduce Google's `gtag` shim locally and push onto `window.dataLayer`
+ * itself, with a note here saying a shared hook "would be better and is worth proposing upstream".
+ * It has been proposed and it exists: `@cloudsforge/ui/consent` now takes a PAGE FIELDS PROVIDER —
+ * a function from a path to the global parameters every event carries — and applies it itself, at
+ * registration and again immediately before the `config` that produces the tag's automatic first
+ * `page_view`.
  *
- * A shared hook would be better and is worth proposing upstream. It is not worth blocking this
- * surface on, and a redaction that lives next to the routes it redacts is not obviously the wrong
- * place for it.
+ * Three things got better and one of them is not cosmetic:
+ *
+ *   * One writer to `dataLayer` in the estate, so the ordering that makes the redaction hold is a
+ *     property of the gate rather than of two files agreeing.
+ *   * The accept-mid-session race is closed INSIDE `grantConsent`, which is the only place that
+ *     knows when `config` is pushed. This surface used to watch for the consent change and re-prime
+ *     afterwards, which was a second attempt at the same ordering from outside.
+ *   * A hand-rolled tag call in a surface repository is what `web-ci`'s third-party-analytics scan
+ *     exists to refuse, and it was refusing this one. That guard was right: the shim was correct
+ *     here and would not be correct the next time somebody copied it.
+ *
+ * What stays here is what belongs here — the ROUTE TABLE's opinion about which paths are
+ * identifying, which is this surface's own and nobody else's.
  */
-import { onConsentChange, readConsent } from '@cloudsforge/ui/consent'
+import { setPageFieldsProvider, trackPageView } from '@cloudsforge/ui/consent'
 import { routePattern } from './routes.ts'
 
 /**
- * `dataLayer`, and the shim that feeds it.
+ * Report a client-side navigation, with this surface's fields.
  *
- * Reproduced from Google's own snippet rather than approximated: it pushes the ARGUMENTS OBJECT,
- * not an array, and that is load-bearing — the tag reads each queued entry as an arguments object
- * and an array of the same values is not accepted in its place. So this is a `function` expression
- * using `arguments`, which is exactly the thing a rest parameter would tidy away and break.
+ * Re-exported rather than wrapped: the gate reads the registered provider itself, so there is
+ * nothing left for this module to add. `components/shell.tsx` calls it on every location change,
+ * and it is a no-op until the reader has accepted.
  */
-interface AnalyticsGlobals {
-  dataLayer?: IArguments[]
-}
-
-function globals(): (Window & AnalyticsGlobals) | null {
-  return typeof window === 'undefined' ? null : (window as Window & AnalyticsGlobals)
-}
-
-const gtag: (...args: readonly unknown[]) => void = function gtagShim(): void {
-  const w = globals()
-  if (!w) return
-  w.dataLayer = w.dataLayer ?? []
-  // eslint-disable-next-line prefer-rest-params
-  w.dataLayer.push(arguments)
-}
+export { trackPageView }
 
 /**
  * The location this page reports itself as: origin, plus the route pattern, and nothing else.
@@ -115,10 +110,14 @@ export function redactedReferrer(origin: string, referrer: string): string {
   }
 }
 
-/** The fields every GA4 event on this surface carries, computed for one address. */
-function pageFields(pathname: string): Record<string, string> {
-  const w = globals()
-  const origin = w ? w.location.origin : ''
+/**
+ * The fields every GA4 event on this surface carries, computed for one address.
+ *
+ * Exported so the suite can assert them directly. It is also what is handed to the gate below, so
+ * the thing the tests read is the thing that ships rather than a re-implementation of it.
+ */
+export function pageFields(pathname: string): Record<string, string> {
+  const origin = typeof window === 'undefined' ? '' : window.location.origin
   const referrer = typeof document === 'undefined' ? '' : document.referrer
   return {
     page_location: redactedLocation(origin, pathname),
@@ -131,56 +130,20 @@ function pageFields(pathname: string): Record<string, string> {
 }
 
 /**
- * Queue the redacted page fields as GA4 GLOBAL parameters.
+ * Hand the redaction to the consent gate.
  *
  * MUST be called before `initAnalytics()`, and `main.tsx` does. `initAnalytics()` grants
  * immediately for a reader who accepted on a previous visit, which pushes `config` — and `config`
- * sends the tag's automatic first `page_view`. Queuing the `set` first means the redacted fields
- * are already in the layer when the tag reads it, so there is no window in which the real path is
- * the one that gets sent. Doing it afterwards would be a race, and the losing branch of that race
+ * sends the tag's automatic first `page_view`. Registering first means the redacted fields are
+ * already in the layer when the tag reads it, so there is no window in which the real path is the
+ * one that gets sent. Doing it afterwards would be a race, and the losing branch of that race
  * reports a handle.
  *
- * `set` rather than `config` options because it persists across the `config` that follows it and
- * applies to every event, including the automatic ones this bundle never issues.
+ * The mid-session case — a reader who accepts on `/v/nefeli` after arriving on `/` — is the gate's
+ * to handle and it does: `grantConsent()` re-reads this provider immediately before the `config` it
+ * pushes. This surface used to attempt the same thing from outside with a consent listener, which
+ * was a second guess at an ordering only the gate can actually know.
  */
 export function primeAnalyticsRedaction(): void {
-  const w = globals()
-  if (!w) return
-  gtag('set', pageFields(w.location.pathname))
-}
-
-/**
- * Report a client-side navigation.
- *
- * GA4 sends a `page_view` when the tag loads and never again — a single-page app that does not do
- * this shows every reader as having viewed exactly one page. The `set` is repeated before the
- * event so that the global fields follow the reader rather than pinning to the address they
- * entered on.
- *
- * A no-op without consent: no tag has been loaded, so the push would sit in an array nothing ever
- * reads, and an unbounded array of events nobody consented to is worth avoiding on a page somebody
- * scrolls for twenty minutes.
- */
-export function trackPageView(pathname: string): void {
-  if (readConsent() !== 'granted') return
-  const fields = pageFields(pathname)
-  gtag('set', fields)
-  gtag('event', 'page_view', fields)
-}
-
-/**
- * Re-prime when the reader's answer changes.
- *
- * A reader who accepts mid-session causes `grantConsent()` to push `config`, whose automatic
- * `page_view` needs the redacted fields already in place — and by then the fields primed at boot
- * describe whichever address the tab opened on rather than the one being read now. Returns the
- * unsubscribe function, which `main.tsx` never calls: this lives as long as the document.
- */
-export function watchConsentForRedaction(): () => void {
-  return onConsentChange((decision) => {
-    if (decision !== 'granted') return
-    const w = globals()
-    if (!w) return
-    gtag('set', pageFields(w.location.pathname))
-  })
+  setPageFieldsProvider(pageFields)
 }

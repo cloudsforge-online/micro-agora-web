@@ -16,12 +16,12 @@
  * reported normally tells Google which browser read which person, and about what. A reader who
  * accepted analytics agreed to be counted; they did not agree to hand over a reading list.
  *
- * `@cloudsforge/ui/consent` has no hook for that — `grantConsent()` issues a plain
- * `gtag('config', …)` — so `lib/analytics.ts` pushes a `gtag('set', …)` carrying the route PATTERN
- * (`/v/:handle`) onto the dataLayer BEFORE the tag exists. The dataLayer is a plain array until the
- * script loads and processes it in order, which is exactly why this call has to precede
- * `initAnalytics()`: a `set` pushed afterwards would be processed after the first `config`, and the
- * first page view — the one that names the address a stranger arrived on — would carry the real
+ * So `lib/analytics.ts` registers a PAGE FIELDS PROVIDER with `@cloudsforge/ui/consent`, which
+ * reports the route PATTERN (`/v/:handle`) in place of the address. The gate applies it the moment
+ * it is registered and again immediately before the `config` it pushes, and `config` is what sends
+ * the tag's automatic first page view — which is exactly why this call has to precede
+ * `initAnalytics()`. Registered afterwards, the provider would be applied after the first `config`,
+ * and the first page view — the one naming the address a stranger arrived on — would carry the real
  * path.
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  *
@@ -35,7 +35,7 @@ import '@cloudsforge/ui/ui.css'
 import './styles.css'
 import { initAnalytics } from '@cloudsforge/ui/consent'
 import { App } from './app.tsx'
-import { primeAnalyticsRedaction, watchConsentForRedaction } from './lib/analytics.ts'
+import { primeAnalyticsRedaction } from './lib/analytics.ts'
 import { initObs } from './lib/obs.ts'
 import { bootstrapSession } from './lib/api.ts'
 
@@ -43,10 +43,6 @@ initObs()
 
 primeAnalyticsRedaction()
 initAnalytics()
-// Consent can be granted mid-session, from the banner, which issues a fresh `config`. The watcher
-// re-asserts the redaction at that moment; without it the first page view AFTER an Accept press
-// would carry the concrete path — the one case the priming above cannot cover.
-watchConsentForRedaction()
 
 const container = document.getElementById('root')
 if (!container) throw new Error('#root is missing from index.html')

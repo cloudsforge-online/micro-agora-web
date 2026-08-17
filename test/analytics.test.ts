@@ -22,16 +22,26 @@
  * own automatic first `page_view`; queued after, there is a window in which the real path is what
  * gets sent, and that window is the whole of the first page view. The `dataLayer` assertions below
  * are about ORDER as much as content.
+ *
+ * ── WHAT THIS FILE OWNS, NOW THAT THE PUSHING IS UPSTREAM ─────────────────────────────────────
+ *
+ * `lib/analytics.ts` no longer writes to `dataLayer` itself: it hands a PAGE FIELDS PROVIDER to
+ * `@cloudsforge/ui/consent`, which queues it. So the split is — the gate's own suite proves the
+ * MECHANISM (that a registration is applied, that `grantConsent` re-applies before `config`), and
+ * this file proves the CONTENT, which is the half that is this surface's alone and the half a
+ * regression would be silent in. The assertions below still read the real `dataLayer`, through the
+ * real gate, because the question worth answering is what a reviewer would see in the GA property
+ * rather than what a provider returned to a mock.
  */
 import assert from 'node:assert/strict'
 import { afterEach, test } from 'node:test'
-import { CONSENT_STORAGE_KEY } from '@cloudsforge/ui/consent'
+import { CONSENT_STORAGE_KEY, setPageFieldsProvider } from '@cloudsforge/ui/consent'
 import {
+  pageFields,
   primeAnalyticsRedaction,
   redactedLocation,
   redactedReferrer,
   trackPageView,
-  watchConsentForRedaction,
 } from '../src/lib/analytics.ts'
 import { ROUTES } from '../src/lib/routes.ts'
 import {
@@ -80,6 +90,12 @@ function open(url: string, referrer = '', consent?: 'granted' | 'denied'): Brows
 }
 
 afterEach(() => {
+  // The registered provider is module state inside the gate, so it outlives the window it was
+  // registered against and every test after this one would otherwise run against the last one's
+  // registration. Withdrawing it makes each test say for itself whether a provider is registered,
+  // which is exactly the difference between "the fields are redacted" and "the fields are redacted
+  // because the previous test happened to run first".
+  setPageFieldsProvider(null)
   removeWindow()
   removeStorage()
   removeDocument()
@@ -213,8 +229,12 @@ test('NOTHING IN THE WHOLE dataLayer CARRIES AN IDENTIFIER, INCLUDING THE REFERR
 
 test('a page view is a set FOLLOWED BY the event, so the fields lead the event that reads them', () => {
   const browser = open(`${ORIGIN}/`, '', 'granted')
+  primeAnalyticsRedaction()
   trackPageView('/circles/ember-miners')
-  const entries = queued(browser)
+  // The first entry is the registration itself; the navigation is the two after it, in this order.
+  // An `event` whose fields were queued after it reads the PREVIOUS page's globals, which is the
+  // failure that looks like off-by-one traffic rather than like a bug.
+  const entries = queued(browser).slice(1)
   assert.deepEqual(
     entries.map((e) => `${String(e[0])}:${String(e[1])}`),
     ['set:[object Object]', 'event:page_view'],
@@ -223,54 +243,66 @@ test('a page view is a set FOLLOWED BY the event, so the fields lead the event t
   assert.equal(fields['page_path'], '/circles/:slug')
 })
 
-test('WITHOUT CONSENT NOTHING IS QUEUED AT ALL', () => {
-  // No tag has been loaded, so a push would sit in an array nothing ever reads — and an unbounded
+test('WITHOUT CONSENT NO EVENT IS QUEUED AT ALL', () => {
+  // No tag has been loaded, so an event would sit in an array nothing ever reads — and an unbounded
   // array of events nobody consented to is worth avoiding on a page somebody scrolls for twenty
   // minutes. `denied` and "never asked" behave identically, which is the only defensible reading.
+  //
+  // Primed first ON PURPOSE, so the only thing standing between `trackPageView` and the layer is
+  // the reader's answer. Registration itself does push — a `set` is not an event, it loads no
+  // script and sets no cookie, and it has to be in the layer BEFORE the tag arrives or the tag's
+  // own first page view carries the real address. That is the whole ordering this file exists for.
   const denied = open(`${ORIGIN}/v/nefeli`, '', 'denied')
+  primeAnalyticsRedaction()
+  const registration = queued(denied).length
   trackPageView('/v/nefeli')
-  assert.equal(queued(denied).length, 0)
+  assert.equal(queued(denied).length, registration)
 
+  setPageFieldsProvider(null)
   removeWindow()
   removeStorage()
   removeDocument()
 
   const unasked = open(`${ORIGIN}/v/nefeli`)
+  primeAnalyticsRedaction()
+  const unaskedRegistration = queued(unasked).length
   trackPageView('/v/nefeli')
-  assert.equal(queued(unasked).length, 0)
+  assert.equal(queued(unasked).length, unaskedRegistration)
 })
 
-test('a reader who accepts mid-session is re-primed from where they are NOW', () => {
-  // `grantConsent()` pushes `config`, whose automatic `page_view` needs the redacted fields already
-  // in place — and by then the fields primed at boot describe whichever address the tab opened on
-  // rather than the one being read. Priming the boot address here would report the wrong page and,
-  // worse, would look correct in every test that only checks for absence of identifiers.
-  const browser = open(`${ORIGIN}/`)
+test('THE REGISTERED PROVIDER IS THE pageFields IN THIS FILE, NOT A COPY OF IT', () => {
+  // The gate holds a function and calls it whenever it needs the globals — at registration, before
+  // the `config` it pushes on accept, and before every `page_view`. So every assertion above about
+  // `pageFields` is only an assertion about what SHIPS if the function handed over is that one.
+  // Proven through the layer rather than by identity, because identity would still hold if the
+  // provider were registered and then never applied.
+  const browser = open(`${ORIGIN}/p/9f2c7d18-4a6b-4c21-9f0e-3b7a1c5e8d24`, `${ORIGIN}/v/nefeli`)
   primeAnalyticsRedaction()
-  const stop = watchConsentForRedaction()
+  const [, fields] = queued(browser)[0] as [string, Record<string, string>]
+  assert.deepEqual(fields, pageFields('/p/9f2c7d18-4a6b-4c21-9f0e-3b7a1c5e8d24'))
+})
+
+test('the fields follow the reader, rather than pinning to the address they entered on', () => {
+  // The mid-session shape, from this surface's side. A reader opens `/`, moves to `/tag/mining`,
+  // and accepts there: the gate re-reads the provider before the `config` it pushes, and what it
+  // gets back has to describe where they ARE. A provider that snapshotted its answer at boot would
+  // report `/` forever — and would pass every test that only checks for absent identifiers.
+  //
+  // The gate's own suite proves it re-reads on accept (it can inject a script; this stub cannot).
+  // What is proven here is the half that makes that worth doing: this provider is a live function
+  // of the address, not a value computed once at registration.
+  const browser = open(`${ORIGIN}/`, '', 'granted')
+  primeAnalyticsRedaction()
+  const [, atBoot] = queued(browser)[0] as [string, Record<string, string>]
+  assert.equal(atBoot['page_path'], '/')
 
   browser.window.location.pathname = '/tag/mining'
-  const listener = browser.listeners.get('cf:consent')?.[0]
-  assert.ok(listener, 'watchConsentForRedaction attached no consent listener')
-  listener({ type: 'cf:consent', detail: 'granted' })
+  trackPageView()
 
   const entries = queued(browser)
-  assert.equal(entries.length, 2)
-  const fields = entries[1]?.[1] as Record<string, string>
+  const fields = entries[entries.length - 1]?.[2] as Record<string, string>
   assert.equal(fields['page_path'], '/tag/:tag')
-  assert.equal(typeof stop, 'function')
-})
-
-test('a refusal re-primes nothing, and unsubscribing detaches both listeners', () => {
-  const browser = open(`${ORIGIN}/`)
-  const stop = watchConsentForRedaction()
-  browser.listeners.get('cf:consent')?.[0]?.({ type: 'cf:consent', detail: 'denied' })
-  assert.equal(queued(browser).length, 0)
-  stop()
-  // `onConsentChange` attaches to `cf:consent` AND `storage`, so a partial unsubscribe is a leak
-  // that survives every navigation for the life of the document.
-  assert.equal(browser.listeners.get('cf:consent')?.length, 0)
-  assert.equal(browser.listeners.get('storage')?.length, 0)
+  assert.equal(fields['page_location'], `${ORIGIN}/tag/:tag`)
 })
 
 test('every entry point is a no-op with no window, so nothing throws where there is no browser', () => {
@@ -280,5 +312,4 @@ test('every entry point is a no-op with no window, so nothing throws where there
   removeDocument()
   assert.doesNotThrow(() => primeAnalyticsRedaction())
   assert.doesNotThrow(() => trackPageView('/v/nefeli'))
-  assert.doesNotThrow(() => watchConsentForRedaction()())
 })

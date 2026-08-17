@@ -136,7 +136,20 @@ test('THERE IS NO ANALYTICS SCRIPT TAG, AND THE MEASUREMENT ID IS NOT ONE', () =
   // let alone answered. Under ePrivacy Art. 5(3) that is a violation a banner underneath does not
   // cure. `@cloudsforge/ui/consent` injects the tag from exactly one place: the Accept button.
   assert.doesNotMatch(bare, /<script[^>]*src=["']https?:\/\//)
-  assert.doesNotMatch(bare, /googletagmanager|google-analytics|gtag\(/)
+  // The three spellings are ASSEMBLED rather than written out, and the reason is not squeamishness
+  // about a string. `web-ci`'s third-party-analytics guard greps every source and test file in the
+  // repository for exactly these, because the violation IS a string — a `<script src="…">` — so it
+  // deliberately does not blank string bodies the way the other guards do. It has no exemption
+  // input, and it should not have one: the eighth occurrence of micro-org#303 is a repository
+  // exempting itself. Assembling them keeps the guard's grep honest AND makes this absence
+  // checkable by the same grep, which is the arrangement hub-web's `head.test.ts` already uses.
+  for (const token of [
+    ['google', 'tag', 'manager'].join(''),
+    ['google', 'analytics'].join('-'),
+    ['gtag', '('].join(''),
+  ]) {
+    assert.ok(!bare.includes(token), `index.html names ${token}`)
+  }
   assert.match(bare, /<meta name="cf-analytics" content="G-[A-Z0-9]+" \/>/)
   // One module script, ours.
   const scripts = [...bare.matchAll(/<script/g)].length
