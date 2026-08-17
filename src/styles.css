@@ -1,0 +1,2991 @@
+/*
+ * Forge Agora's own styles, on top of @cloudsforge/ui.
+ *
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ * EVERY CUSTOM PROPERTY REFERENCED HERE IS DEFINED IN `ui/packages/ui/src/tokens.css`, AND A TEST
+ * PROVES IT.
+ *
+ * `test/tokens.test.ts` reads the sibling design system, collects every `--cf-*` this file names,
+ * and fails on one that tokens.css does not declare. That is not a style preference: an undefined
+ * custom property makes the whole declaration invalid at computed-value time, so
+ * `border: 1px solid var(--cf-undefined)` does not fall back to a sensible border — it drops the
+ * border entirely, silently, in a file that looks correct. `micro-mint-web` shipped exactly that
+ * across 72 declarations. The names that exist:
+ *
+ *   borders   --cf-line, --cf-line-strong             (never --cf-border)
+ *   states    --cf-good-*, --cf-warn-*, --cf-critical-*, --cf-success, --cf-danger
+ *   radii     --cf-radius-sm, --cf-radius, --cf-radius-lg   (never --cf-radius-md)
+ *   spacing   --cf-space-3xs … --cf-space-3xl         (never --cf-space-1..5)
+ *   type      --cf-font-sans, --cf-font-mono, --cf-font-display  (never --cf-font)
+ *
+ * MARK STEP AND TEXT STEP ARE DIFFERENT TOKENS. `--cf-accent`, `--cf-ember` and `--cf-warn` are
+ * validated at 3:1 — the floor for a border, a fill or a stroke; `--cf-accent-text` and
+ * `--cf-warn-text` are the 4.5:1 step for type. Every `color:` below names a `-text` step; every
+ * border, stroke and fill keeps the mark step.
+ *
+ * THE ONE EXCEPTION IS THE LETTER AVATAR, and it is written to need no scheme branch. A voice with
+ * no picture gets a tint derived from `hue(handle)` — 360 possible values, which no token scale can
+ * carry — laid down as `hsl(… / 0.22)` OVER the surface underneath rather than as an opaque fill,
+ * with the initials in `--cf-fg`. A 22% wash reads as a tint on a light ground and on a dark one,
+ * and the letters keep the foreground token's guaranteed contrast either way. That is the whole
+ * exception; everything else in this file is a token or `transparent`.
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * ── THE DIRECTION, IN ONE PARAGRAPH ───────────────────────────────────────────────────────────
+ *
+ * This is a room, not a feed. So THE POSTS HAVE NO CARDS — no boxes, no shadows, no rounded
+ * rectangles, no hover lift. A card says "this is an item in a list, like the item above it"; a
+ * square is people speaking one after another, and the thing that separates them is a hairline and
+ * a change of voice. Cards are kept for the things that genuinely are OBJECTS you can hold and
+ * open: a circle, a form panel, a whisper bubble. That restraint is the whole layout budget, and it
+ * is spent on the one place a social surface actually needs it.
+ *
+ * ── THE SIGNATURE: THE SPEAKING LINE ──────────────────────────────────────────────────────────
+ *
+ * One device, drawn one way, everywhere. A 2px rule, VERTICAL beside anything that is a person's
+ * voice and drawn once HORIZONTALLY where the page itself speaks:
+ *
+ *   in the gutter beside an avatar   → this voice continues (a thread, a reply chain)
+ *   down an unread notification      → somebody spoke to this reader and has not been answered
+ *   down a quoted report             → these are the reporter's own words, quoted, never markup
+ *   before a page title              → the surface is addressing you
+ *
+ * `--ag-mark` is that rule and it appears in those four places and nowhere else — never on hover,
+ * never as an underline, never as a decoration on a card edge. Everything else that separates two
+ * things is `--cf-line`, the design system's own, so this square sits inside the estate rather than
+ * beside it. test/tokens.test.ts enumerates the four: a fifth use has to be argued for there, which
+ * is the point — the device stops reading as a signature the moment it becomes a border style.
+ *
+ * The first three take `--cf-accent` or `--cf-line-strong` depending on whether the voice is
+ * addressed TO this reader or merely quoted in front of them.
+ *
+ * ── AND THE ACCENT IS RESERVED FOR SPEAKING ───────────────────────────────────────────────────
+ *
+ * The orchid in `[data-cf-product='agora']` marks only what a person presses to say something of
+ * their own — Post, Reply, Send, the unread counts that are waiting for them, the mark above. A
+ * link is `--cf-fg` with an underline, a tag is `--cf-accent-text` because a tag IS somebody's
+ * word. Nothing decorative takes the accent, which is what leaves it legible when it is used.
+ *
+ * ── TYPE ──────────────────────────────────────────────────────────────────────────────────────
+ *
+ *   --cf-font-display  ONCE per page, on `.ag-page-title`. Nowhere else.
+ *   --cf-font-sans     everything a person wrote, at --cf-text-md, the largest comfortable body.
+ *   --cf-font-mono     the apparatus: handles, timestamps, counts, slugs, reference codes, badges.
+ *
+ * The handle in mono is the load-bearing one. A display name is what somebody CHOSE; a handle is
+ * what the system knows them by, and setting the two in different faces is how `Nefeli` and
+ * `@nefeli` stop reading as the same word twice.
+ */
+
+/* ---- the local scale -------------------------------------------------- */
+
+:root {
+  /*
+   * The three column widths, named once because the grid, the two collapse breakpoints and the
+   * whisper pane all need the same numbers.
+   *
+   * The middle column is 40rem rather than the estate's `--cf-measure`, which is tuned for prose
+   * paragraphs. A post is short, has an avatar gutter beside it, and carries a row of controls
+   * under it: at measure width the controls crowd and at full width a two-line post becomes a
+   * two-word-per-line ribbon.
+   */
+  --ag-rail-nav: 14.5rem;
+  --ag-rail-find: 17rem;
+  --ag-column: 40rem;
+
+  /* The avatar column. One number, used by the post, the composer and the reply chain, so the
+     three of them line up down the page — which is what makes the speaking line continuous. */
+  --ag-gutter: 3rem;
+
+  /* The signature. 2px because 1px reads as a border and 3px reads as a bar. */
+  --ag-mark: 2px;
+
+  /* Reply indentation per level of depth, multiplied by the inline `--ag-depth`. */
+  --ag-indent: var(--cf-space-lg);
+}
+
+/* ---- the page --------------------------------------------------------- */
+
+body {
+  background: var(--cf-bg);
+  color: var(--cf-fg);
+  font-family: var(--cf-font-sans);
+}
+
+/*
+ * Visually hidden, keyboard reachable. The estate ships `.cf-sr` and this is the same technique
+ * under a local name, because the labels it hides here are ours and a future change to the shared
+ * one should not silently re-expose a label this bundle placed for a screen reader only.
+ */
+.ag-vh {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---- the three columns ------------------------------------------------ */
+
+.ag-shell {
+  display: grid;
+  grid-template-columns: var(--ag-rail-nav) minmax(0, var(--ag-column)) var(--ag-rail-find);
+  gap: var(--cf-space-xl);
+  justify-content: center;
+  align-items: start;
+  max-width: var(--cf-max-w);
+  margin: 0 auto;
+  padding: var(--cf-space-lg) var(--cf-space-md) var(--cf-space-3xl);
+}
+
+.ag-main {
+  min-width: 0;
+}
+
+/*
+ * The page roots — one rule for all of them, and it is deliberately almost empty.
+ *
+ * Vertical rhythm on this surface belongs to the BLOCKS, not to the page: `.ag-page-head` carries
+ * the rule and the margin underneath it, `.ag-timeline` separates its rows with a hairline of its
+ * own. A `gap` here would be ADDED to that rather than replacing it, and every page would end up
+ * with a larger space under its title than under anything else on it — the specific way a layout
+ * stops looking designed and starts looking assembled.
+ *
+ * What a page root is for is the column itself. `min-width: 0` is the load-bearing declaration: a
+ * flex item's minimum size is its CONTENT by default, so one unbroken URL in one post — and this is
+ * a surface where strangers paste URLs — widens the track it sits in and pushes the right rail off
+ * the screen. Every timeline row already wraps its own text; this is what stops the page doing the
+ * opposite from above.
+ */
+.ag-thread,
+.ag-profile,
+.ag-circles,
+.ag-circle,
+.ag-notifications,
+.ag-settings,
+.ag-moderation,
+.ag-search-page,
+.ag-guidelines,
+.ag-people {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.ag-rail {
+  position: sticky;
+  /* Under the estate's bar, plus a breath. The bar is fixed on every surface in the estate, so a
+     rail that sticks to 0 sticks UNDERNEATH it and the top item is never reachable. */
+  top: calc(var(--cf-bar-h) + var(--cf-space-md));
+  display: flex;
+  flex-direction: column;
+  gap: var(--cf-space-lg);
+  min-width: 0;
+}
+
+.ag-rail__title {
+  margin: 0;
+  font-family: var(--cf-font-mono);
+  font-size: var(--cf-text-2xs);
+  font-weight: 600;
+  letter-spacing: var(--cf-tracking-wide);
+  text-transform: uppercase;
+  color: var(--cf-fg-mute);
+}
+
+/* ---- the left rail ---------------------------------------------------- */
+
+.ag-nav {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--cf-space-3xs);
+}
+
+.ag-nav__item {
+  display: flex;
+  align-items: center;
+  gap: var(--cf-space-sm);
+  padding: var(--cf-space-2xs) var(--cf-space-sm);
+  border-radius: var(--cf-radius);
+  color: var(--cf-fg);
+  text-decoration: none;
+  font-size: var(--cf-text-sm);
+  transition: background-color var(--cf-speed) var(--cf-ease);
+}
+
+.ag-nav__item:hover {
+  background: var(--cf-surface-hover);
+}
+
+/*
+ * The current address. A background and a WEIGHT change, not a colour change: colour alone is the
+ * one signal a reader with a colour deficiency does not get, and this is the element that says
+ * where they are.
+ */
+.ag-nav__item--on {
+  background: var(--cf-surface);
+  font-weight: 600;
+}
+
+.ag-nav__glyph {
+  flex: none;
+  width: 1.25rem;
+  text-align: center;
+  font-size: var(--cf-text-md);
+  color: var(--cf-fg-dim);
+  line-height: 1;
+}
+
+.ag-nav__item--on .ag-nav__glyph {
+  color: var(--cf-accent-text);
+}
+
+.ag-nav__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Something is waiting for this reader. One of the four places the accent is spent. */
+.ag-nav__badge {
+  margin-left: auto;
+  flex: none;
+  min-width: 1.35rem;
+  padding: 0 var(--cf-space-3xs);
+  border-radius: var(--cf-radius-lg);
+  background: var(--cf-accent);
+  color: var(--cf-accent-ink);
+  font-family: var(--cf-font-mono);
+  font-size: var(--cf-text-2xs);
+  font-weight: 700;
+  line-height: 1.35rem;
+  text-align: center;
+}
+
+.ag-nav__sep {
+  margin-top: var(--cf-space-sm);
+  padding-top: var(--cf-space-sm);
+  border-top: 1px solid var(--cf-line);
+}
+
+.ag-rail__write {
+  width: 100%;
+  justify-content: center;
+}
+
+/* ---- the right rail --------------------------------------------------- */
+
+.ag-search {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cf-space-2xs);
+}
+
+.ag-search__label {
+  font-family: var(--cf-font-mono);
+  font-size: var(--cf-text-2xs);
+  font-weight: 600;
+  letter-spacing: var(--cf-tracking-wide);
+  text-transform: uppercase;
+  color: var(--cf-fg-mute);
+}
+
+/*
+ * `type="search"`, and this is the declaration that makes that safe.
+ *
+ * The type is worth having: it gives the reader Escape-to-clear and, on a phone, a keyboard whose
+ * return key says Search. What comes with it in WebKit is a NATIVE appearance that ignores the
+ * border, the radius and the raised background above, so the one field in the left rail would be
+ * the only control in this bundle drawn by the platform instead of by the estate. `appearance:
+ * none` keeps the behaviour and drops the drawing.
+ */
+.ag-search__input {
+  appearance: none;
+}
+
+.ag-search--inline,
+.ag-search--page {
+  flex-direction: row;
+  gap: var(--cf-space-2xs);
+  align-items: center;
+}
+
+.ag-search--inline .ag-input,
+.ag-search--page .ag-input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.ag-search-page__results {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cf-space-2xl);
+}
+
+.ag-trends {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cf-space-2xs);
+}
+
+.ag-trends__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.ag-trends__item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: var(--cf-space-2xs) var(--cf-space-sm);
+  border-radius: var(--cf-radius);
+  text-decoration: none;
+  transition: background-color var(--cf-speed) var(--cf-ease);
+}
+
+.ag-trends__item:hover {
+  background: var(--cf-surface-hover);
+}
+
+.ag-trends__tag {
+  font-family: var(--cf-font-mono);
+  font-size: var(--cf-text-sm);
+  color: var(--cf-accent-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ag-trends__count {
+  font-family: var(--cf-font-mono);
+  font-size: var(--cf-text-2xs);
+  color: var(--cf-fg-mute);
+}
+
+/* ---- page heads ------------------------------------------------------- */
+
+.ag-page-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cf-space-2xs);
+  padding-bottom: var(--cf-space-md);
+  margin-bottom: var(--cf-space-md);
+  border-bottom: 1px solid var(--cf-line);
+}
+
+.ag-page-head--tight {
+  padding-bottom: var(--cf-space-sm);
+  margin-bottom: var(--cf-space-sm);
+}
+
+/*
+ * The one use of the display face, and the horizontal half of the signature.
+ *
+ * The rule is a pseudo-element rather than a `border-left`, because it has to be SHORTER than the
+ * text it marks — a border runs the full line box and reads as a blockquote, which is a different
+ * statement. 1.1em tall, sitting on the baseline block, is a mark rather than a container.
+ */
+.ag-page-title {
+  position: relative;
+  margin: 0;
+  padding-left: var(--cf-space-sm);
+  font-family: var(--cf-font-display);
+  font-size: var(--cf-text-2xl);
+  font-weight: 600;
+  line-height: var(--cf-leading-tight);
+  letter-spacing: var(--cf-tracking-tight);
+  color: var(--cf-fg);
+}
+
+.ag-page-title::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.16em;
+  width: var(--ag-mark);
+  height: 1.1em;
+  background: var(--cf-accent);
+  border-radius: var(--ag-mark);
+}
+
+.ag-page-sub {
+  margin: 0;
+  padding-left: var(--cf-space-sm);
+  font-size: var(--cf-text-sm);
+  line-height: var(--cf-leading);
+  color: var(--cf-fg-dim);
+  max-width: var(--cf-measure);
+}
+
+.ag-section-title {
+  margin: 0 0 var(--cf-space-sm);
+  font-family: var(--cf-font-mono);
+  font-size: var(--cf-text-2xs);
+  font-weight: 600;
+  letter-spacing: var(--cf-tracking-wide);
+  text-transform: uppercase;
+  color: var(--cf-fg-mute);
+}
+
+/* ---- controls --------------------------------------------------------- */
+
+.ag-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--cf-space-2xs);
+  padding: var(--cf-space-2xs) var(--cf-space-md);
+  border: 1px solid var(--cf-line-strong);
+  border-radius: var(--cf-radius);
+  background: var(--cf-surface);
+  color: var(--cf-fg);
+  font-family: inherit;
+  font-size: var(--cf-text-sm);
+  font-weight: 500;
+  line-height: 1.4;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background-color var(--cf-speed) var(--cf-ease),
+    border-color var(--cf-speed) var(--cf-ease);
+}
+
+.ag-btn:hover:not(:disabled) {
+  background: var(--cf-surface-hover);
+  border-color: var(--cf-fg-mute);
+}
+
+.ag-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* The accent's main job on the surface: the control you press to say something. */
+.ag-btn--primary {
+  background: var(--cf-accent);
+  border-color: var(--cf-accent);
+  color: var(--cf-accent-ink);
+  font-weight: 600;
+}
+
+.ag-btn--primary:hover:not(:disabled) {
+  background: var(--cf-accent-hover);
+  border-color: var(--cf-accent-hover);
+}
+
+.ag-btn--quiet {
+  padding: var(--cf-space-3xs) var(--cf-space-2xs);
+  border-color: transparent;
+  background: transparent;
+  font-size: var(--cf-text-xs);
+  color: var(--cf-fg-dim);
+}
+
+.ag-btn--quiet:hover:not(:disabled) {
+  background: var(--cf-surface-hover);
+  border-color: transparent;
+  color: var(--cf-fg);
+}
+
+/* A quiet button that is currently ON — the composer's sensitive toggle. */
+.ag-btn--quiet.is-on {
+  background: var(--cf-warn-wash);
+  color: var(--cf-warn-text);
+}
+
+/* `--primary --quiet` together: an inline accept, in a notification row. Accent as TYPE, so it
+   does not compete with the real Post button two hundred pixels away. */
+.ag-btn--primary.ag-btn--quiet {
+  background: transparent;
+  border-color: transparent;
+  color: var(--cf-accent-text);
+  font-weight: 600;
+}
+
+.ag-btn--primary.ag-btn--quiet:hover:not(:disabled) {
+  background: var(--cf-accent-glow);
+}
+
+.ag-btn--danger {
+  border-color: var(--cf-critical-edge);
+  background: var(--cf-critical-wash);
+  color: var(--cf-critical-text);
+}
+
+.ag-btn--danger:hover:not(:disabled) {
+  background: var(--cf-critical);
+  border-color: var(--cf-critical);
+  color: var(--cf-critical-ink);
+}
+
+.ag-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--cf-radius);
+  background: transparent;
+  color: var(--cf-fg-mute);
+  font-size: var(--cf-text-md);
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background-color var(--cf-speed) var(--cf-ease),
+    color var(--cf-speed) var(--cf-ease);
+}
+
+.ag-icon-btn:hover {
+  background: var(--cf-surface-hover);
+  color: var(--cf-fg);
+}
+
+.ag-input,
+.ag-textarea,
+.ag-select {
+  width: 100%;
+  padding: var(--cf-space-2xs) var(--cf-space-sm);
+  border: 1px solid var(--cf-line-strong);
+  border-radius: var(--cf-radius);
+  background: var(--cf-bg-raised);
+  color: var(--cf-fg);
+  font-family: inherit;
+  font-size: var(--cf-text-sm);
+  line-height: var(--cf-leading);
+}
+
+.ag-input::placeholder,
+.ag-textarea::placeholder {
+  color: var(--cf-fg-mute);
+}
+
+.ag-input:focus,
+.ag-textarea:focus,
+.ag-select:focus {
+  outline: 2px solid var(--cf-accent);
+  outline-offset: -1px;
+}
+
+.ag-input--slug {
+  font-family: var(--cf-font-mono);
+}
+
+.ag-textarea {
+  resize: vertical;
+  min-height: 6rem;
+}
+
+.ag-textarea--short {
+  min-height: 3.5rem;
+}
+
+.ag-select {
+  cursor: pointer;
+}
+
+.ag-select--quiet {
+  width: auto;
+  padding: var(--cf-space-3xs) var(--cf-space-2xs);
+  border-color: transparent;
+  background: transparent;
+  font-size: var(--cf-text-xs);
+  color: var(--cf-fg-dim);
+}
+
+.ag-select--quiet:hover {
+  background: var(--cf-surface-hover);
+}
+
+.ag-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cf-space-3xs);
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+
+.ag-field__label {
+  font-size: var(--cf-text-sm);
+  font-weight: 600;
+  color: var(--cf-fg);
+  padding: 0;
+}
+
+.ag-field__hint {
+  font-size: var(--cf-text-xs);
+  color: var(--cf-fg-mute);
+}
+
+/* The immutable half of an address, shown beside the part somebody is typing. */
+.ag-field__prefix {
+  display: flex;
+  align-items: center;
+  gap: var(--cf-space-3xs);
+  font-family: var(--cf-font-mono);
+  font-size: var(--cf-text-sm);
+  color: var(--cf-fg-mute);
+}
+
+.ag-field__prefix .ag-input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/*
+ * A radio and its two lines of explanation.
+ *
+ * Grid rather than flex so the hint aligns under the LABEL and not under the control — an
+ * explanation indented to the radio reads as a second option.
+ */
+.ag-radio {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0 var(--cf-space-sm);
+  padding: var(--cf-space-2xs) 0;
+  cursor: pointer;
+}
+
+.ag-radio input {
+  grid-row: 1 / 3;
+  align-self: start;
+  margin-top: 0.2em;
+  accent-color: var(--cf-accent);
+}
+
+.ag-radio__label {
+  font-size: var(--cf-text-sm);
+  font-weight: 500;
+  color: var(--cf-fg);
+}
+
+.ag-radio__hint {
+  font-size: var(--cf-text-xs);
+  line-height: var(--cf-leading-snug);
+  color: var(--cf-fg-mute);
+}
+
+/* A real checkbox, restyled. The input stays in the DOM and stays focusable — a div with a click
+   handler is not a switch to a keyboard or to a screen reader. */
+.ag-switch {
+  display: flex;
+  align-items: center;
+  gap: var(--cf-space-sm);
+  cursor: pointer;
+}
+
+.ag-switch input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.ag-switch__track {
+  flex: none;
+  position: relative;
+  width: 2.25rem;
+  height: 1.25rem;
+  border: 1px solid var(--cf-line-strong);
+  border-radius: var(--cf-radius-lg);
+  background: var(--cf-bg-sunken);
+  transition: background-color var(--cf-speed) var(--cf-ease);
+}
+
+.ag-switch__knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 0.875rem;
+  height: 0.875rem;
+  border-radius: 50%;
+  background: var(--cf-fg-mute);
+  transition:
+    transform var(--cf-speed) var(--cf-ease),
+    background-color var(--cf-speed) var(--cf-ease);
+}
+
+.ag-switch input:checked + .ag-switch__track {
+  background: var(--cf-accent);
+  border-color: var(--cf-accent);
+}
+
+.ag-switch input:checked + .ag-switch__track .ag-switch__knob {
+  transform: translateX(1rem);
+  background: var(--cf-accent-ink);
+}
+
+.ag-switch input:focus-visible + .ag-switch__track {
+  outline: 2px solid var(--cf-accent);
+  outline-offset: 2px;
+}
+
+.ag-switch__label {
+  font-size: var(--cf-text-sm);
+  color: var(--cf-fg);
+}
+
+.ag-tabs {
+  display: flex;
+  gap: var(--cf-space-3xs);
+  flex-wrap: wrap;
+}
+
+.ag-tab {
+  padding: var(--cf-space-3xs) var(--cf-space-sm);
+  border: 1px solid transparent;
+  border-radius: var(--cf-radius-lg);
+  background: transparent;
+  color: var(--cf-fg-dim);
+  font-family: inherit;
+  font-size: var(--cf-text-xs);
+  cursor: pointer;
+  transition:
+    background-color var(--cf-speed) var(--cf-ease),
+    color var(--cf-speed) var(--cf-ease);
+}
+
+.ag-tab:hover {
+  background: var(--cf-surface-hover);
+  color: var(--cf-fg);
+}
+
+/*
+ * BOTH modifiers are styled, on purpose, and this is not a redundancy to be tidied away.
+ * `pages/voice.tsx` writes `ag-tab--on` and `pages/moderation.tsx` and `pages/notifications.tsx`
+ * write `is-on`. Styling one and "fixing" the callers is a change that looks free and silently
+ * un-marks a tab set the moment somebody copies the other page's idiom.
+ */
+.ag-tab--on,
+.ag-tab.is-on {
+  background: var(--cf-surface-solid);
+  border-color: var(--cf-line);
+  color: var(--cf-fg);
+  font-weight: 600;
+}
+
+.ag-tab__count {
+  font-family: var(--cf-font-mono);
+  color: var(--cf-accent-text);
+  font-weight: 700;
+}
+
+.ag-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--cf-space-3xs);
+  border: 1px solid var(--cf-line);
+  border-radius: var(--cf-radius-sm);
+  background: var(--cf-surface);
+  color: var(--cf-fg-dim);
+  font-family: var(--cf-font-mono);
+  font-size: var(--cf-text-2xs);
+  letter-spacing: var(--cf-tracking-wide);
+  white-space: nowrap;
+}
+
+.ag-badge--quiet {
+  border-color: transparent;
+  background: transparent;
+  color: var(--cf-fg-mute);
+}
+
+.ag-badge--warn {
+  border-color: var(--cf-warn-edge);
+  background: var(--cf-warn-wash);
+  color: var(--cf-warn-text);
+}
+
+/* The post menu's popover. Positioned by `.ag-post__menu`, which is the relative parent. */
+.ag-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + var(--cf-space-3xs));
+  z-index: 20;
+  list-style: none;
+  margin: 0;
+  padding: var(--cf-space-3xs);
+  min-width: 11rem;
+  border: 1px solid var(--cf-line);
+  border-radius: var(--cf-radius);
+  background: var(--cf-surface-solid);
+  box-shadow: var(--cf-shadow);
+}
+
+.ag-menu__item {
+  display: block;
+  width: 100%;
+  padding: var(--cf-space-2xs) var(--cf-space-sm);
+  border: 0;
+  border-radius: var(--cf-radius-sm);
+  background: transparent;
+  color: var(--cf-fg);
+  font-family: inherit;
+  font-size: var(--cf-text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.ag-menu__item:hover {
+  background: var(--cf-surface-hover);
+}
+
+.ag-menu__item--danger {
+  color: var(--cf-critical-text);
+}
+
+/* A form or a definition on its own ground. One of the three things that gets to be a card. */
+.ag-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cf-space-md);
+  padding: var(--cf-space-lg);
+  border: 1px solid var(--cf-line);
+  border-radius: var(--cf-radius-lg);
+  background: var(--cf-bg-raised);
+}
+
+.ag-panel__title {
+  margin: 0;
+  font-size: var(--cf-text-lg);
+  font-weight: 600;
+  color: var(--cf-fg);
+}
+
+.ag-panel__actions {
+  display: flex;
+  gap: var(--cf-space-sm);
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.ag-panel__failure {
+  margin: 0;
+  font-size: var(--cf-text-sm);
+  color: var(--cf-critical-text);
+}
+
+/* A definition list of short facts — the account block in settings, a voice's joined date. */
+.ag-facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--cf-space-2xs) var(--cf-space-md);
+  margin: 0;
+  font-size: var(--cf-text-sm);
+}
+
+.ag-facts dt {
+  color: var(--cf-fg-mute);
+}
+
+.ag-facts dd {
+  margin: 0;
+  color: var(--cf-fg);
+  overflow-wrap: anywhere;
+}
+
+.ag-notice {
+  margin: 0 0 var(--cf-space-md);
+  padding: var(--cf-space-sm) var(--cf-space-md);
+  border: 1px solid var(--cf-warn-edge);
+  border-radius: var(--cf-radius);
+  background: var(--cf-warn-wash);
+  color: var(--cf-warn-text);
+  font-size: var(--cf-text-sm);
+  line-height: var(--cf-leading);
+}
+
+/* ---- the state panels ------------------------------------------------- */
+
+/*
+ * Six states, one shape. `lib/resource.ts` distinguishes loading, ok, empty, failed, forbidden and
+ * missing precisely so the reader is never shown one when another is true, and this is the place
+ * that difference becomes visible: same layout, different glyph and different colour of glyph, so
+ * "nothing here yet" and "this did not load" cannot be confused at a glance.
+ */
+.ag-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--cf-space-xs);
+  padding: var(--cf-space-2xl) var(--cf-space-lg);
+  text-align: center;
+}
+
+.ag-state--quiet {
+  padding: var(--cf-space-lg);
+}
+
+/*
+ * A FLOOR UNDER THE THREE STATES THAT STAND IN PLACE OF A LIST.
+ *
+ * `Loading`, `Empty` and `Missing` replace a timeline, and a timeline is tall. Without a minimum
+ * the column is four lines high while the request is in flight and full height a moment later, so
+ * the page grows under whatever the reader was reaching for — the footer, a tab, the composer —
+ * and they press the wrong thing. Reserving the space is the same argument as the explicit width
+ * and height on every avatar, made once for the whole column.
+ *
+ * `--failed` and `--refused` are deliberately not in this list: both carry an explanation and a row
+ * of actions, so both are already taller than the floor would be, and giving them one would only
+ * add empty space beneath a message somebody needs to read.
+ */
+.ag-state--loading,
+.ag-state--empty,
+.ag-state--missing {
+  justify-content: center;
+  min-height: 14rem;
+}
+
+.ag-state__glyph {
+  font-size: var(--cf-text-3xl);
+  line-height: 1;
+  color: var(--cf-fg-mute);
+}
+
+.ag-state--failed .ag-state__glyph {
+  color: var(--cf-critical-text);
+}
+
+.ag-state--refused .ag-state__glyph {
+  color: var(--cf-warn-text);
+}
+
+.ag-state__title {
+  margin: 0;
+  font-size: var(--cf-text-lg);
+  font-weight: 600;
+  color: var(--cf-fg);
+}
+
+.ag-state__hint {
+  margin: 0;
+  max-width: 34rem;
+  font-size: var(--cf-text-sm);
+  line-height: var(--cf-leading);
+  color: var(--cf-fg-dim);
+}
+
+.ag-state__action,
+.ag-state__actions {
+  display: flex;
+  gap: var(--cf-space-sm);
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-top: var(--cf-space-2xs);
+}
+
+/* The one string worth reading out to somebody on the other end of a support message. */
+.ag-state__ref {
+  margin: 0;
+  font-size: var(--cf-text-xs);
+  color: var(--cf-fg-mute);
+}
+
+.ag-state__ref-code {
+  font-family: var(--cf-font-mono);
+  user-select: all;
+}
+
+.ag-dots {
+  display: inline-flex;
+  gap: var(--cf-space-3xs);
+  font-size: var(--cf-text-xl);
+  line-height: 1;
+  color: var(--cf-fg-mute);
+}
+
+.ag-dots > * {
+  animation: ag-pulse 1.1s var(--cf-ease) infinite;
+}
+
+.ag-dots > *:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.ag-dots > *:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes ag-pulse {
+  0%,
+  60%,
+  100% {
+    opacity: 0.3;
+  }
+  30% {
+    opacity: 1;
+  }
+}
+
+/* The sign-in panel that keeps the address. */
+.ag-gate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--cf-space-md);
+  padding: var(--cf-space-2xl) var(--cf-space-lg);
+  text-align: center;
+}
+
+.ag-gate__title {
+  margin: 0;
+  font-family: var(--cf-font-display);
+  font-size: var(--cf-text-xl);
+  font-weight: 600;
+  color: var(--cf-fg);
+}
+
+.ag-gate__body {
+  margin: 0;
+  max-width: 32rem;
+  font-size: var(--cf-text-sm);
+  line-height: var(--cf-leading);
+  color: var(--cf-fg-dim);
+}
+
+/* ---- voices ----------------------------------------------------------- */
+
+.ag-avatar {
+  flex: none;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--cf-surface);
+}
+
+.ag-avatar--sm {
+  width: 1.75rem;
+  height: 1.75rem;
+}
+
+.ag-avatar--md {
+  width: 2.5rem;
+  height: 2.5rem;
+}
+
+.ag-avatar--lg {
+  width: 5rem;
+  height: 5rem;
+}
+
+/*
+ * The letters, for a voice with no picture. See the exception documented in the file header: the
+ * tint is a 22% wash so it reads on either ground, and the initials keep `--cf-fg` so their
+ * contrast is the foreground token's guarantee rather than a colour this file computed.
+ */
+.ag-avatar--letters {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: hsl(var(--ag-avatar-hue) 55% 50% / 0.22);
+  color: var(--cf-fg);
+  font-family: var(--cf-font-mono);
+  font-size: var(--cf-text-xs);
+  font-weight: 700;
+  letter-spacing: var(--cf-tracking-tight);
+  text-transform: uppercase;
+  user-select: none;
+}
+
+.ag-avatar--lg.ag-avatar--letters {
+  font-size: var(--cf-text-xl);
+}
+
+/*
+ * A name and a handle, in two faces. The whole point of the pair — see the type note in the header.
+ * Inline-flex with a baseline alignment so the two sit on one line and wrap as one unit.
+ */
+.ag-voice-name {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--cf-space-3xs);
+  min-width: 0;
+  text-decoration: none;
+  color: inherit;
+}
+
+.ag-voice-name__display {
+  font-weight: 600;
+  color: var(--cf-fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ag-voice-name:hover .ag-voice-name__display {
+  text-decoration: underline;
+}
+
+.ag-voice-name__handle {
+  font-family: var(--cf-font-mono);
+  font-size: var(--cf-text-xs);
+  color: var(--cf-fg-mute);
+  white-space: nowrap;
+}
+
+/* ---- a post ----------------------------------------------------------- */
+
+.ag-timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/*
+ * No card. See the header. A post is a grid of gutter + words, separated from the next post by one
+ * hairline, and that is the entire chrome.
+ */
+.ag-post {
+  display: grid;
+  grid-template-columns: var(--ag-gutter) minmax(0, 1fr);
+  gap: var(--cf-space-sm);
+  padding: var(--cf-space-md) var(--cf-space-2xs);
+  border-bottom: 1px solid var(--cf-line);
+}
+
+/*
+ * The post the address names. A wash rather than a border, because a border would move the text and
+ * the reader has just been scrolled to this element — anything that shifts under them at that
+ * moment reads as the page still loading.
+ */
+.ag-post--focused {
+  background: var(--cf-surface);
+}
+
+.ag-post--gone {
+  padding: var(--cf-space-sm) var(--cf-space-2xs);
+  border-bottom: 1px solid var(--cf-line);
+}
+
+.ag-post__gone,
+.ag-bubble__gone {
+  margin: 0;
+  font-size: var(--cf-text-sm);
+  font-style: italic;
+  color: var(--cf-fg-mute);
+}
+
+.ag-post__gutter {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--cf-space-2xs);
+  min-height: 100%;
+}
+
+/*
+ * THE SIGNATURE, VERTICAL. This voice is still speaking below — a reply chain, a self-thread. It
+ * runs from under the avatar to the bottom of the row and meets the next post's line exactly,
+ * because both are in a gutter of the same fixed width.
+ */
+.ag-post__thread-line {
+  flex: 1 1 auto;
+  width: var(--ag-mark);
+  min-height: var(--cf-space-md);
+  border-radius: var(--ag-mark);
+  background: var(--cf-accent);
+  opacity: 0.45;
+}
+
+/* Connected to the post below: no hairline, or the rule would cut the line it continues. */
+.ag-post--connected {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.ag-post__main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--cf-space-2xs);
+}
+
+.ag-post__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--cf-space-3xs);
+  min-width: 0;
+}
+
+.ag-post__dot,
+.ag-post__edited,
+.ag-post__when {
+  font-family: var(--cf-font-mono);
+  font-size: var(--cf-text-xs);
+  color: var(--cf-fg-mute);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.ag-post__when:hover {
+  text-decoration: underline;
+}
+
+.ag-post__spacer {
+  flex: 1 1 auto;
+}
+
+.ag-post__menu {
+  position: relative;
+  flex: none;
+  align-self: center;
+}
+
+/* The words. The largest body size the estate's scale carries — this is what the page is for. */
+.ag-post__body {
+  margin: 0;
+  font-size: var(--cf-text-md);
+  line-height: var(--cf-leading);
+  color: var(--cf-fg);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+/*
+ * The three token kinds. A mention and a tag take colour because they are ADDRESSES inside a
+ * sentence; a link takes an underline and the foreground, because a link to somewhere off this
+ * estate should not be dressed in the estate's accent.
+ */
+.ag-tok--mention,
+.ag-tok--tag {
+  color: var(--cf-accent-text);
+  text-decoration: none;
+}
+
+.ag-tok--mention {
+  font-family: var(--cf-font-mono);
+}
+
+.ag-tok--mention:hover,
+.ag-tok--tag:hover {
+  text-decoration: underline;
+}
+
+.ag-tok--link {
+  color: var(--cf-fg);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+  overflow-wrap: anywhere;
+}
+
+/* Something the author said needs a warning first. The button is inside, so the wash contains it. */
+.ag-post__warned {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--cf-space-2xs);
+  padding: var(--cf-space-md);
+  border: 1px solid var(--cf-warn-edge);
+  border-radius: var(--cf-radius);
+  background: var(--cf-warn-wash);
+}
+
+.ag-post__warning {
+  margin: 0;
+  font-size: var(--cf-text-sm);
+  color: var(--cf-warn-text);
+}
+
+.ag-media {
+  display: grid;
+  gap: var(--cf-space-3xs);
+  border-radius: var(--cf-radius);
+  overflow: hidden;
+}
+
+.ag-media--1 {
+  grid-template-columns: 1fr;
+}
+
+.ag-media--2,
+.ag-media--4 {
+  grid-template-columns: 1fr 1fr;
+}
+
+/* Three: one tall on the left, two stacked on the right. */
+.ag-media--3 {
+  grid-template-columns: 1fr 1fr;
+}
+
+.ag-media--3 > *:first-child {
+  grid-row: span 2;
+}
+
+.ag-media__item {
+  display: block;
+  width: 100%;
+  max-height: 32rem;
+  object-fit: cover;
+  background: var(--cf-bg-sunken);
+}
+
+/* The bytes cannot be reached, so the description is the content. Not an error, and not styled
+   like one — the author attached something and said what it was. */
+.ag-media__item--absent {
+  margin: 0;
+  padding: var(--cf-space-md);
+  border: 1px dashed var(--cf-line-strong);
+  border-radius: var(--cf-radius);
+  background: transparent;
+  color: var(--cf-fg-dim);
+  font-size: var(--cf-text-sm);
+  font-style: italic;
+  max-height: none;
+}
+
+/* A post quoted inside another post, and the draft version in the composer. */
+.ag-quoted {
+  margin: 0;
+  padding: var(--cf-space-sm) var(--cf-space-md);
+  border: 1px solid var(--cf-line);
+  border-radius: var(--cf-radius);
+  background: var(--cf-surface);
+}
+
+.ag-quoted--draft {
+  background: transparent;
+}
+
+.ag-quoted__who {
+  display: block;
+  font-family: var(--cf-font-mono);
+  font-size: var(--cf-text-xs);
+  font-style: normal;
+  color: var(--cf-fg-mute);
+}
+
+.ag-quoted__body {
+  margin: var(--cf-space-3xs) 0 0;
+  font-size: var(--cf-text-sm);
+  line-height: var(--cf-leading-snug);
+  color: var(--cf-fg-dim);
+}
+
+/* ---- what you can do to a post ---------------------------------------- */
+
+.ag-post__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--cf-space-lg);
+  margin-top: var(--cf-space-3xs);
+  flex-wrap: wrap;
+}
+
+.ag-action {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cf-space-3xs);
+  padding: var(--cf-space-3xs);
+  margin: calc(var(--cf-space-3xs) * -1);
+  border: 0;
+  border-radius: var(--cf-radius);
+  background: transparent;
+  color: var(--cf-fg-mute);
+  font-family: inherit;
+  font-size: var(--cf-text-xs);
+  text-decoration: none;
+  cursor: pointer;
+  transition: color var(--cf-speed) var(--cf-ease);
+}
+
+.ag-action:hover {
+  color: var(--cf-fg);
+}
+
+/* Done by this reader. The accent again, and for the same reason: it is a thing they said. */
+.ag-action--on {
+  color: var(--cf-accent-text);
+}
+
+.ag-action__icon {
+  font-size: var(--cf-text-md);
+  line-height: 1;
+}
+
+.ag-action__count {
+  font-family: var(--cf-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.ag-post__failure {
+  margin: 0;
+  font-size: var(--cf-text-xs);
+  color: var(--cf-critical-text);
+}
+
+/* ---- reporting -------------------------------------------------------- */
+
+.ag-report {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cf-space-sm);
+  padding: var(--cf-space-md);
+  border: 1px solid var(--cf-line);
+  border-radius: var(--cf-radius);
+  background: var(--cf-bg-raised);
+}
+
+.ag-report--done {
+  color: var(--cf-good-text);
+  font-size: var(--cf-text-sm);
+}
+
+.ag-report__actions {
+  display: flex;
+  gap: var(--cf-space-sm);
+  justify-content: flex-end;
+}
+
+.ag-report__failure {
+  margin: 0;
+  font-size: var(--cf-text-sm);
+  color: var(--cf-critical-text);
+}
+
+/* ---- the timeline's foot ---------------------------------------------- */
+
+.ag-more {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--cf-space-2xs);
+  padding: var(--cf-space-lg) 0;
+}
+
+/* In a whisper pane the seam is at the TOP, because that is where "earlier" is. */
+.ag-more--up {
+  padding: var(--cf-space-sm) 0;
+}
+
+.ag-more__failure {
+  margin: 0;
+  font-size: var(--cf-text-xs);
+  color: var(--cf-critical-text);
+}
+
+/* ---- the composer ----------------------------------------------------- */
+
+/*
+ * Deliberately the same grid as `.ag-post`, to the pixel. What the reader is typing sits exactly
+ * where it will sit once they press Post, which is the cheapest possible preview and the only
+ * honest one.
+ */
+.ag-composer {
+  display: grid;
+  grid-template-columns: var(--ag-gutter) minmax(0, 1fr);
+  gap: var(--cf-space-sm);
+  padding: var(--cf-space-md) var(--cf-space-2xs);
+  border-bottom: 1px solid var(--cf-line);
+}
+
+.ag-composer--reply {
+  border-bottom: 0;
+}
+
+.ag-composer--gate {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--cf-space-md);
+  flex-wrap: wrap;
+}
+
+.ag-composer__gate-text {
+  margin: 0;
+  font-size: var(--cf-text-sm);
+  color: var(--cf-fg-dim);
+}
+
+.ag-composer__gutter {
+  display: flex;
+  justify-content: center;
+}
+
+.ag-composer__main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--cf-space-2xs);
+}
+
+.ag-composer__label {
+  font-size: var(--cf-text-sm);
+  color: var(--cf-fg-dim);
+}
+
+/* The box grows with what is in it and never scrolls at these sizes. Borderless, because the whole
+   column IS the box — a bordered textarea inside a bordered column is two boxes. */
+.ag-composer__box {
+  border-color: transparent;
+  background: transparent;
+  padding-left: 0;
+  padding-right: 0;
+  font-size: var(--cf-text-md);
+  min-height: 4.5rem;
+}
+
+.ag-composer__box:focus {
+  outline: 0;
+}
+
+.ag-composer__controls {
+  display: flex;
+  align-items: center;
+  gap: var(--cf-space-2xs);
+  flex-wrap: wrap;
+  padding-top: var(--cf-space-2xs);
+  border-top: 1px solid var(--cf-line);
+}
+
+.ag-composer__spacer {
+  flex: 1 1 auto;
+}
+
+.ag-composer__audience {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cf-space-3xs);
+  margin: 0;
+  font-size: var(--cf-text-xs);
+  color: var(--cf-fg-dim);
+}
+
+.ag-composer__audience-note {
+  margin: 0;
+  font-size: var(--cf-text-xs);
+  color: var(--cf-fg-mute);
+}
+
+.ag-composer__count {
+  font-family: var(--cf-font-mono);
+  font-size: var(--cf-text-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--cf-fg-mute);
+}
+
+/* Over the limit. Critical rather than warn: the Post button is disabled at this point, so this is
+   not advice, it is the reason nothing is happening. */
+.ag-composer__count.is-over {
+  color: var(--cf-critical-text);
+  font-weight: 700;
+}
+
+.ag-composer__hint {
+  margin: 0;
+  font-size: var(--cf-text-xs);
+  color: var(--cf-fg-mute);
+}
+
+.ag-composer__failure {
+  margin: 0;
+  font-size: var(--cf-text-sm);
+  color: var(--cf-critical-text);
+}
+
+.ag-composer__ref {
+  display: block;
+  font-family: var(--cf-font-mono);
+  font-size: var(--cf-text-2xs);
+  color: var(--cf-fg-mute);
+}
+
+/* The sentence that says the draft survived. Not an error colour — it is the reassurance. */
+.ag-composer__safe {
+  display: block;
+  margin-top: var(--cf-space-3xs);
+  color: var(--cf-fg-dim);
+  font-size: var(--cf-text-xs);
+}
+
+/* ---- a thread --------------------------------------------------------- */
+
+.ag-thread__chain,
+.ag-thread__replies {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ag-thread__reply {
+  border-bottom: 1px solid var(--cf-line);
+}
+
+/*
+ * Reply depth, as indentation, bounded.
+ *
+ * `--ag-depth` is set inline per row by `pages/thread.tsx`, which walks the parent chain and caps
+ * it. `min()` caps it a second time here, in the presentation, because a depth the page did not
+ * expect must degrade to a wide indent rather than to a one-word column sliding off the screen.
+ */
+.ag-thread__reply-row {
+  padding-left: min(calc(var(--ag-depth, 0) * var(--ag-indent)), 6rem);
+}
+
+/* ---- circles ---------------------------------------------------------- */
+
+.ag-circles__controls {
+  display: flex;
+  gap: var(--cf-space-sm);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.ag-circle-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  /* auto-fill, never auto-fit: with auto-fit a row of two cards stretches each to half the column,
+     so a two-circle estate renders cards twice the size of a six-circle one. */
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: var(--cf-space-md);
+}
+
+/* A circle IS an object you open. One of the three things that gets to be a card. */
+.ag-circle-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cf-space-2xs);
+  height: 100%;
+  padding: var(--cf-space-md);
+  border: 1px solid var(--cf-line);
+  border-radius: var(--cf-radius-lg);
+  background: var(--cf-bg-raised);
+  color: inherit;
+  text-decoration: none;
+  transition: border-color var(--cf-speed) var(--cf-ease);
+}
+
+.ag-circle-card:hover {
+  border-color: var(--cf-fg-mute);
+}
+
+.ag-circle-card.is-archived {
+  opacity: 0.7;
+}
+
+.ag-circle-card__head {
+  display: flex;
+  align-items: center;
+  gap: var(--cf-space-sm);
+  min-width: 0;
+}
+
+.ag-circle-card__avatar,
+.ag-circle__avatar {
+  flex: none;
+  border-radius: var(--cf-radius);
+  object-fit: cover;
+  background: var(--cf-surface);
+}
+
+.ag-circle-card__avatar {
+  width: 2.25rem;
+  height: 2.25rem;
+}
+
+.ag-circle-card__avatar--none,
+.ag-circle__avatar--none {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--cf-fg-mute);
+  line-height: 1;
+}
+
+.ag-circle-card__avatar--none {
+  font-size: var(--cf-text-lg);
+}
+
+.ag-circle-card__name {
+  font-weight: 600;
+  color: var(--cf-fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ag-circle-card__purpose {
+  font-size: var(--cf-text-sm);
+  line-height: var(--cf-leading-snug);
+  color: var(--cf-fg-dim);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+
+.ag-circle-card__facts,
+.ag-circle__facts {
+  display: flex;
+  align-items: center;
+  gap: var(--cf-space-2xs);
+  flex-wrap: wrap;
+  margin: 0;
+  font-family: var(--cf-font-mono);
+  font-size: var(--cf-text-2xs);
+  color: var(--cf-fg-mute);
+}
+
+.ag-circle-card__facts {
+  margin-top: auto;
+  padding-top: var(--cf-space-2xs);
+}
+
+.ag-circle-card__door {
+  font-family: var(--cf-font-mono);
+  font-size: var(--cf-text-2xs);
+  color: var(--cf-fg-mute);
+}
+
+.ag-new-circle {
+  margin-bottom: var(--cf-space-lg);
+}
+
+/* ---- one circle ------------------------------------------------------- */
+
+.ag-circle__head {
+  display: flex;
+  gap: var(--cf-space-md);
+  align-items: flex-start;
+  padding-bottom: var(--cf-space-md);
+  margin-bottom: var(--cf-space-md);
+  border-bottom: 1px solid var(--cf-line);
+}
+
+.ag-circle__avatar {
+  width: 4rem;
+  height: 4rem;
+}
+
+.ag-circle__avatar--none {
+  font-size: var(--cf-text-2xl);
+}
+
+.ag-circle__names {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--cf-space-3xs);
+}
+
+.ag-circle__slug {
+  margin: 0;
+  padding-left: var(--cf-space-sm);
+  font-family: var(--cf-font-mono);
+  font-size: var(--cf-text-xs);
+  color: var(--cf-fg-mute);
+}
+
+.ag-circle__purpose {
+  margin: var(--cf-space-3xs) 0 0;
+  padding-left: var(--cf-space-sm);
+  font-size: var(--cf-text-sm);
+  line-height: var(--cf-leading);
+  color: var(--cf-fg-dim);
+}
+
+.ag-circle__facts {
+  padding-left: var(--cf-space-sm);
+}
+
+/*
+ * The circle page is the one page with a second column INSIDE the main column: posts, and the
+ * roster beside them. Below the narrow breakpoint the roster goes under, which is right — a member
+ * list is a thing you consult, and consulting it on a phone is a scroll rather than a squint.
+ */
+.ag-circle__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 12rem;
+  gap: var(--cf-space-lg);
+  align-items: start;
+}
+
+/* The join control. Not an error panel — see the page header: a 403 here IS the door. */
+.ag-circle__door {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--cf-space-2xs);
+}
+
+.ag-circle__door-note {
+  margin: 0;
+  font-size: var(--cf-text-xs);
+  color: var(--cf-fg-mute);
+  text-align: center;
+}
+
+.ag-roster {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cf-space-sm);
+}
+
+.ag-roster__queue {
+  padding-bottom: var(--cf-space-sm);
+  border-bottom: 1px solid var(--cf-line);
+}
+
+.ag-roster__sub {
+  margin: 0 0 var(--cf-space-2xs);
+  font-family: var(--cf-font-mono);
+  font-size: var(--cf-text-2xs);
+  font-weight: 600;
+  letter-spacing: var(--cf-tracking-wide);
+  text-transform: uppercase;
+  color: var(--cf-warn-text);
+}
+
+.ag-roster__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--cf-space-2xs);
+}
+
+.ag-roster__row {
+  display: flex;
+  align-items: center;
+  gap: var(--cf-space-2xs);
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.ag-roster__who {
+  display: flex;
+  align-items: center;
+  gap: var(--cf-space-2xs);
+  min-width: 0;
+  flex: 1 1 auto;
+  text-decoration: none;
+  color: inherit;
+}
+
+.ag-roster__name {
+  font-size: var(--cf-text-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ag-roster__who:hover .ag-roster__name {
+  text-decoration: underline;
+}
+
+.ag-roster__actions {
+  display: flex;
+  gap: var(--cf-space-3xs);
+}
+
+.ag-roster__none {
+  margin: 0;
+  font-size: var(--cf-text-xs);
+  color: var(--cf-fg-mute);
+}
+
+/* ---- a voice's page --------------------------------------------------- */
+
+.ag-profile__banner {
+  display: block;
+  width: 100%;
+  height: 10rem;
+  object-fit: cover;
+  border-radius: var(--cf-radius-lg);
+  background: var(--cf-surface);
+}
+
+/* No picture: the ground, not a placeholder graphic. A grey rectangle with an icon in it is a
+   broken image; an empty band is a design. */
+.ag-profile__banner--none {
+  height: 5rem;
+  background: var(--cf-surface);
+}
+
+.ag-profile__head {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--cf-space-md);
+  /* Lifted into the banner, which is the one place this surface borrows a convention wholesale,
+     because every reader already knows what it means. */
+  margin-top: calc(var(--cf-space-2xl) * -1);
+  padding: 0 var(--cf-space-md);
+}
+
+.ag-profile__head .ag-avatar {
+  border: 3px solid var(--cf-bg);
+}
+
+.ag-profile__names {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--cf-space-3xs);
+  padding-bottom: var(--cf-space-2xs);
+}
+
+.ag-profile__name {
+  margin: 0;
+  font-family: var(--cf-font-display);
+  font-size: var(--cf-text-xl);
+  font-weight: 600;
+  line-height: var(--cf-leading-tight);
+  color: var(--cf-fg);
+}
+
+.ag-profile__handle {
+  margin: 0;
+  font-family: var(--cf-font-mono);
+  font-size: var(--cf-text-sm);
+  color: var(--cf-fg-mute);
+}
+
+.ag-profile__bio {
+  margin: var(--cf-space-md) 0 0;
+  padding: 0 var(--cf-space-md);
+  font-size: var(--cf-text-sm);
+  line-height: var(--cf-leading);
+  color: var(--cf-fg);
+  max-width: var(--cf-measure);
+  white-space: pre-wrap;
+}
+
+.ag-profile__facts {
+  display: flex;
+  gap: var(--cf-space-md);
+  flex-wrap: wrap;
+  margin: var(--cf-space-sm) 0 0;
+  padding: 0 var(--cf-space-md);
+}
+
+.ag-profile__fact {
+  display: flex;
+  align-items: center;
+  gap: var(--cf-space-3xs);
+  font-size: var(--cf-text-xs);
+  color: var(--cf-fg-mute);
+}
+
+.ag-profile__fact dt {
+  font-family: var(--cf-font-mono);
+}
+
+.ag-profile__fact dd {
+  margin: 0;
+}
+
+.ag-profile__counts {
+  list-style: none;
+  display: flex;
+  gap: var(--cf-space-md);
+  flex-wrap: wrap;
+  margin: var(--cf-space-sm) 0 var(--cf-space-md);
+  padding: 0 var(--cf-space-md);
+  font-size: var(--cf-text-sm);
+  color: var(--cf-fg-dim);
+}
+
+.ag-profile__counts .cf-num {
+  font-family: var(--cf-font-mono);
+  font-weight: 700;
+  color: var(--cf-fg);
+}
+
+.ag-relations {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--cf-space-2xs);
+  margin-left: auto;
+  padding-bottom: var(--cf-space-2xs);
+}
+
+.ag-relations__failure {
+  margin: 0;
+  font-size: var(--cf-text-xs);
+  color: var(--cf-critical-text);
+}
+
+/* Barring somebody is a two-press decision, and the second press is beside the sentence that says
+   what it does. */
+.ag-relations__confirm {
+  display: flex;
+  align-items: center;
+  gap: var(--cf-space-2xs);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  padding: var(--cf-space-2xs) var(--cf-space-sm);
+  border: 1px solid var(--cf-critical-edge);
+  border-radius: var(--cf-radius);
+  background: var(--cf-critical-wash);
+}
+
+.ag-relations__confirm-text {
+  margin: 0;
+  font-size: var(--cf-text-xs);
+  color: var(--cf-critical-text);
+}
+
+/* ---- people lists ----------------------------------------------------- */
+
+.ag-people__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ag-people__row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--cf-space-2xs) var(--cf-space-sm);
+  padding: var(--cf-space-sm) var(--cf-space-2xs);
+  border-bottom: 1px solid var(--cf-line);
+  text-decoration: none;
+  color: inherit;
+  transition: background-color var(--cf-speed) var(--cf-ease);
+}
+
+.ag-people__row:hover {
+  background: var(--cf-surface-hover);
+}
+
+.ag-people__row .ag-avatar {
+  grid-row: 1 / 3;
+}
+
+.ag-people__names {
+  display: flex;
+  align-items: baseline;
+  gap: var(--cf-space-2xs);
+  min-width: 0;
+}
+
+.ag-people__name {
+  font-weight: 600;
+  color: var(--cf-fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ag-people__handle {
+  font-family: var(--cf-font-mono);
+  font-size: var(--cf-text-xs);
+  color: var(--cf-fg-mute);
+}
+
+.ag-people__bio {
+  font-size: var(--cf-text-sm);
+  line-height: var(--cf-leading-snug);
+  color: var(--cf-fg-dim);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+/* ---- notifications ---------------------------------------------------- */
+
+.ag-notifications__controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--cf-space-sm);
+  flex-wrap: wrap;
+}
+
+.ag-notif-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ag-notif {
+  display: flex;
+  align-items: center;
+  gap: var(--cf-space-2xs);
+  border-bottom: 1px solid var(--cf-line);
+}
+
+/*
+ * Unread. A left mark and a wash — and the mark is the SIGNATURE, vertical, because an unread
+ * notification is somebody who spoke to this reader and has not been answered.
+ */
+.ag-notif.is-unread {
+  background: var(--cf-surface);
+  box-shadow: inset var(--ag-mark) 0 0 0 var(--cf-accent);
+}
+
+.ag-notif__body {
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: 1.25rem auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--cf-space-sm);
+  min-width: 0;
+  padding: var(--cf-space-sm) var(--cf-space-md);
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  font-size: var(--cf-text-sm);
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.ag-notif__body:hover {
+  background: var(--cf-surface-hover);
+}
+
+.ag-notif__glyph {
+  font-size: var(--cf-text-md);
+  line-height: 1;
+  text-align: center;
+  color: var(--cf-fg-mute);
+}
+
+/*
+ * Four of the thirteen kinds get a colour, and the other nine deliberately do not. Colouring every
+ * kind turns the column into a paint chart and stops any single one meaning anything. These four
+ * are the ones that are ABOUT THE READER rather than about a post of theirs.
+ */
+.ag-notif__glyph--follow,
+.ag-notif__glyph--follow_request,
+.ag-notif__glyph--follow_accepted {
+  color: var(--cf-accent-text);
+}
+
+.ag-notif__glyph--moderation {
+  color: var(--cf-warn-text);
+}
+
+/* Not a person: the estate itself. */
+.ag-notif__estate {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 50%;
+  background: var(--cf-surface-solid);
+  color: var(--cf-fg-mute);
+  line-height: 1;
+}
+
+.ag-notif__said {
+  min-width: 0;
+  color: var(--cf-fg-dim);
+  overflow: hidden;
+}
+
+.ag-notif__who {
+  font-weight: 600;
+  color: var(--cf-fg);
+}
+
+.ag-notif__detail {
+  display: block;
+  font-size: var(--cf-text-xs);
+  color: var(--cf-fg-mute);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ag-notif__when {
+  font-family: var(--cf-font-mono);
+  font-size: var(--cf-text-2xs);
+  color: var(--cf-fg-mute);
+  white-space: nowrap;
+}
+
+.ag-notif__actions {
+  display: flex;
+  gap: var(--cf-space-3xs);
+  padding-right: var(--cf-space-md);
+  flex: none;
+}
+
+/* ---- whispers --------------------------------------------------------- */
+
+/*
+ * Two panes at one address. Below the narrow breakpoint they become one pane at a time and
+ * `is-open` decides which — the class is on the container rather than on either pane so that
+ * exactly one rule chooses, and the two can never both be showing or both be hidden.
+ */
+.ag-whispers {
+  display: grid;
+  grid-template-columns: 15rem minmax(0, 1fr);
+  gap: var(--cf-space-md);
+  align-items: start;
+  min-height: 70vh;
+}
+
+.ag-whispers__list {
+  min-width: 0;
+  border-right: 1px solid var(--cf-line);
+  padding-right: var(--cf-space-md);
+}
+
+.ag-whispers__pane {
+  min-width: 0;
+}
+
+.ag-thread-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* One conversation in the list. Named `ag-convo-row` and not `ag-thread`: see the note in
+   `pages/whispers.tsx` — a reply thread and a whisper thread are different objects. */
+.ag-convo-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--cf-space-2xs);
+  width: 100%;
+  padding: var(--cf-space-sm) var(--cf-space-2xs);
+  border: 0;
+  border-bottom: 1px solid var(--cf-line);
+  border-radius: var(--cf-radius);
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ag-convo-row:hover {
+  background: var(--cf-surface-hover);
+}
+
+.ag-convo-row.is-on {
+  background: var(--cf-surface);
+}
+
+.ag-convo-row.is-unread .ag-convo-row__name {
+  font-weight: 700;
+}
+
+.ag-convo-row__who {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.ag-convo-row__name {
+  font-size: var(--cf-text-sm);
+  font-weight: 600;
+  color: var(--cf-fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ag-convo-row__preview {
+  font-size: var(--cf-text-xs);
+  color: var(--cf-fg-mute);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ag-convo-row__meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--cf-space-3xs);
+  font-family: var(--cf-font-mono);
+  font-size: var(--cf-text-2xs);
+  color: var(--cf-fg-mute);
+}
+
+.ag-convo-row__unread {
+  min-width: 1.25rem;
+  padding: 0 var(--cf-space-3xs);
+  border-radius: var(--cf-radius-lg);
+  background: var(--cf-accent);
+  color: var(--cf-accent-ink);
+  font-weight: 700;
+  line-height: 1.25rem;
+  text-align: center;
+}
+
+.ag-convo {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 60vh;
+}
+
+.ag-convo__head {
+  display: flex;
+  align-items: center;
+  gap: var(--cf-space-sm);
+  padding-bottom: var(--cf-space-sm);
+  border-bottom: 1px solid var(--cf-line);
+}
+
+.ag-convo__who {
+  display: flex;
+  align-items: center;
+  gap: var(--cf-space-2xs);
+  min-width: 0;
+  text-decoration: none;
+  color: inherit;
+}
+
+.ag-convo__name {
+  font-weight: 600;
+  color: var(--cf-fg);
+}
+
+.ag-convo__handle {
+  font-family: var(--cf-font-mono);
+  font-size: var(--cf-text-xs);
+  color: var(--cf-fg-mute);
+}
+
+.ag-convo__head .ag-btn {
+  margin-left: auto;
+}
+
+.ag-convo__body {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--cf-space-sm);
+  padding: var(--cf-space-md) 0;
+  min-height: 0;
+}
+
+.ag-convo__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--cf-space-2xs);
+}
+
+/* A whisper IS an object — the third and last thing that gets to be a card. */
+.ag-bubble {
+  max-width: 80%;
+  align-self: flex-start;
+  padding: var(--cf-space-2xs) var(--cf-space-sm);
+  border: 1px solid var(--cf-line);
+  border-radius: var(--cf-radius);
+  background: var(--cf-surface);
+}
+
+/* Mine. Aligned right and on the accent's wash — which is the accent's whole rule on this surface:
+   it marks what this reader said. */
+.ag-bubble.is-mine {
+  align-self: flex-end;
+  border-color: transparent;
+  background: var(--cf-accent-glow);
+}
+
+.ag-bubble--gone {
+  align-self: flex-start;
+  border-style: dashed;
+  background: transparent;
+}
+
+.ag-bubble--gone.is-mine {
+  align-self: flex-end;
+}
+
+.ag-bubble__body {
+  margin: 0;
+  font-size: var(--cf-text-sm);
+  line-height: var(--cf-leading);
+  color: var(--cf-fg);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.ag-bubble__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--cf-space-2xs);
+  margin: var(--cf-space-3xs) 0 0;
+  font-family: var(--cf-font-mono);
+  font-size: var(--cf-text-2xs);
+  color: var(--cf-fg-mute);
+}
+
+.ag-bubble__delete {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--cf-fg-mute);
+  font-family: inherit;
+  font-size: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.ag-bubble__delete:hover {
+  color: var(--cf-critical-text);
+}
+
+.ag-convo__compose {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--cf-space-sm);
+  padding-top: var(--cf-space-sm);
+  border-top: 1px solid var(--cf-line);
+}
+
+.ag-convo__compose .ag-textarea {
+  flex: 1 1 auto;
+}
+
+.ag-convo__failure {
+  margin: var(--cf-space-2xs) 0 0;
+  font-size: var(--cf-text-sm);
+  color: var(--cf-critical-text);
+}
+
+/* ---- settings --------------------------------------------------------- */
+
+.ag-settings__group {
+  padding-top: var(--cf-space-lg);
+  margin-top: var(--cf-space-lg);
+  border-top: 1px solid var(--cf-line);
+}
+
+/* The first group carries no rule: the page head above it already drew one, and two hairlines a
+   space apart read as a mistake. The ORDER of these groups is an argument — see the page. */
+.ag-settings__group--first {
+  padding-top: 0;
+  margin-top: var(--cf-space-lg);
+  border-top: 0;
+}
+
+.ag-settings__title {
+  margin: 0 0 var(--cf-space-sm);
+  font-size: var(--cf-text-lg);
+  font-weight: 600;
+  color: var(--cf-fg);
+}
+
+.ag-settings__lede {
+  margin: 0 0 var(--cf-space-md);
+  font-size: var(--cf-text-sm);
+  line-height: var(--cf-leading);
+  color: var(--cf-fg-dim);
+  max-width: var(--cf-measure);
+}
+
+.ag-settings__note {
+  margin: var(--cf-space-sm) 0;
+  font-size: var(--cf-text-xs);
+  line-height: var(--cf-leading);
+  color: var(--cf-fg-mute);
+  max-width: var(--cf-measure);
+}
+
+/* Every field saves on its own, so every field is its own block with its own outcome line. */
+.ag-setting {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cf-space-3xs);
+  padding: var(--cf-space-sm) 0;
+  border: 0;
+  margin: 0;
+  min-width: 0;
+}
+
+.ag-setting + .ag-setting {
+  border-top: 1px solid var(--cf-line);
+}
+
+.ag-setting__label {
+  font-size: var(--cf-text-sm);
+  font-weight: 600;
+  color: var(--cf-fg);
+  padding: 0;
+}
+
+.ag-setting__hint {
+  margin: 0;
+  font-size: var(--cf-text-xs);
+  line-height: var(--cf-leading-snug);
+  color: var(--cf-fg-mute);
+  max-width: var(--cf-measure);
+}
+
+.ag-setting__actions {
+  display: flex;
+  gap: var(--cf-space-2xs);
+  margin-top: var(--cf-space-3xs);
+}
+
+.ag-setting__saved {
+  margin: 0;
+  font-size: var(--cf-text-xs);
+  color: var(--cf-good-text);
+}
+
+.ag-setting__failure {
+  margin: 0;
+  font-size: var(--cf-text-xs);
+  color: var(--cf-critical-text);
+}
+
+/* ---- the guidelines --------------------------------------------------- */
+
+/*
+ * The one page on the surface that is PROSE, and the only place the measure token applies. It is
+ * also the only public indexed page besides the square and the circle list, which is why it is
+ * allowed to read like a document rather than like an interface.
+ */
+.ag-prose {
+  max-width: var(--cf-measure);
+  font-size: var(--cf-text-md);
+  line-height: var(--cf-leading);
+  color: var(--cf-fg);
+}
+
+.ag-prose h2 {
+  margin: var(--cf-space-2xl) 0 var(--cf-space-sm);
+  font-family: var(--cf-font-display);
+  font-size: var(--cf-text-lg);
+  font-weight: 600;
+  color: var(--cf-fg);
+}
+
+.ag-prose p {
+  margin: 0 0 var(--cf-space-md);
+}
+
+.ag-prose a {
+  color: var(--cf-fg);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+.ag-guidelines__reasons {
+  margin: 0;
+}
+
+.ag-guidelines__reason {
+  padding: var(--cf-space-sm) 0;
+  border-bottom: 1px solid var(--cf-line);
+}
+
+.ag-guidelines__reason dt {
+  font-weight: 600;
+  color: var(--cf-fg);
+}
+
+.ag-guidelines__reason dd {
+  margin: var(--cf-space-3xs) 0 0;
+  font-size: var(--cf-text-sm);
+  color: var(--cf-fg-dim);
+}
+
+.ag-guidelines__outcomes {
+  margin: 0;
+  padding-left: var(--cf-space-lg);
+  font-size: var(--cf-text-sm);
+  color: var(--cf-fg-dim);
+}
+
+.ag-guidelines__outcomes li {
+  margin-bottom: var(--cf-space-2xs);
+}
+
+.ag-guidelines__foot {
+  margin-top: var(--cf-space-2xl);
+  padding-top: var(--cf-space-md);
+  border-top: 1px solid var(--cf-line);
+  font-size: var(--cf-text-sm);
+  color: var(--cf-fg-mute);
+}
+
+/* ---- the moderation queue --------------------------------------------- */
+
+.ag-reports {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--cf-space-md);
+}
+
+.ag-reports .ag-report {
+  padding: var(--cf-space-lg);
+}
+
+/* Resolved rows stay in the list at lower emphasis. A queue that deletes its own history is a
+   queue nobody can audit. */
+.ag-report.is-actioned,
+.ag-report.is-dismissed {
+  opacity: 0.75;
+}
+
+.ag-report__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--cf-space-sm);
+  flex-wrap: wrap;
+}
+
+.ag-report__reason {
+  padding: var(--cf-space-3xs) var(--cf-space-2xs);
+  border-radius: var(--cf-radius-sm);
+  background: var(--cf-surface-solid);
+  font-family: var(--cf-font-mono);
+  font-size: var(--cf-text-2xs);
+  font-weight: 600;
+  letter-spacing: var(--cf-tracking-wide);
+  text-transform: uppercase;
+  color: var(--cf-fg-dim);
+}
+
+/*
+ * Three of the seven reasons are marked and the rest are not, for the same reason the notification
+ * glyphs are: an operator triaging a queue needs to see WHICH ONES CANNOT WAIT, and a queue where
+ * every row is coloured tells them nothing. These three are the ones with a person at the other end
+ * of the delay.
+ */
+.ag-report__reason--self_harm,
+.ag-report__reason--illegal {
+  background: var(--cf-critical-wash);
+  color: var(--cf-critical-text);
+}
+
+.ag-report__reason--abuse {
+  background: var(--cf-warn-wash);
+  color: var(--cf-warn-text);
+}
+
+.ag-report__subject,
+.ag-report__who {
+  margin: 0;
+  font-size: var(--cf-text-sm);
+  color: var(--cf-fg-dim);
+}
+
+.ag-report__when {
+  margin-left: auto;
+  font-family: var(--cf-font-mono);
+  font-size: var(--cf-text-2xs);
+  color: var(--cf-fg-mute);
+}
+
+/* What the reporter typed. Somebody else's words, in a quote, never as markup. */
+.ag-report__detail {
+  margin: 0;
+  padding: var(--cf-space-sm) var(--cf-space-md);
+  border-left: var(--ag-mark) solid var(--cf-line-strong);
+  background: var(--cf-surface);
+  font-size: var(--cf-text-sm);
+  line-height: var(--cf-leading);
+  color: var(--cf-fg);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.ag-report__act {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cf-space-sm);
+  padding-top: var(--cf-space-sm);
+  border-top: 1px solid var(--cf-line);
+}
+
+.ag-report__choices {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.ag-report__note {
+  margin: 0;
+  font-size: var(--cf-text-xs);
+  color: var(--cf-fg-mute);
+}
+
+.ag-report__resolved {
+  margin: 0;
+  font-size: var(--cf-text-sm);
+  color: var(--cf-good-text);
+}
+
+.ag-report__resolution {
+  display: block;
+  margin-top: var(--cf-space-3xs);
+  color: var(--cf-fg-dim);
+  font-style: italic;
+}
+
+.ag-report__history-toggle {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--cf-fg-mute);
+  font-family: inherit;
+  font-size: var(--cf-text-xs);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.ag-report__history-none {
+  margin: 0;
+  font-size: var(--cf-text-xs);
+  color: var(--cf-fg-mute);
+}
+
+.ag-history {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--cf-space-2xs);
+}
+
+.ag-history__row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--cf-space-2xs);
+  flex-wrap: wrap;
+  font-size: var(--cf-text-xs);
+  color: var(--cf-fg-mute);
+}
+
+.ag-history__action {
+  font-weight: 600;
+  color: var(--cf-fg-dim);
+}
+
+.ag-history__by {
+  font-family: var(--cf-font-mono);
+}
+
+.ag-history__when {
+  margin-left: auto;
+  font-family: var(--cf-font-mono);
+}
+
+.ag-history__reason {
+  flex: 1 0 100%;
+  margin: 0;
+  font-style: italic;
+  color: var(--cf-fg-mute);
+}
+
+/* ---- a tag's page ----------------------------------------------------- */
+
+.ag-tag-hush {
+  display: flex;
+  align-items: center;
+  gap: var(--cf-space-2xs);
+  flex-wrap: wrap;
+  margin: 0 0 var(--cf-space-md);
+  font-size: var(--cf-text-xs);
+  color: var(--cf-fg-mute);
+}
+
+.ag-tag-hush__note {
+  color: var(--cf-fg-dim);
+}
+
+/* ---- the dead address ------------------------------------------------- */
+
+/*
+ * The 404 is a state panel that is also a PAGE, so it takes the height of one. Without this it
+ * renders as a short notice pinned to the top of a long empty column, which reads as a component
+ * that failed rather than as an answer — and the answer here is a real one: there is nothing at
+ * this address, and here are three places that do exist.
+ */
+.ag-notfound {
+  min-height: 24rem;
+  justify-content: center;
+}
+
+.ag-notfound__path {
+  margin: 0;
+  font-family: var(--cf-font-mono);
+  font-size: var(--cf-text-sm);
+  color: var(--cf-fg-mute);
+  overflow-wrap: anywhere;
+  max-width: 100%;
+}
+
+/* ---- focus ------------------------------------------------------------ */
+
+/*
+ * One ring, on everything, and `:focus-visible` so a mouse press does not paint it. The accent is
+ * spent here despite the reserve stated in the header, because a focus ring is the one mark that
+ * has to be found instantly and must never be confused with a decorative border.
+ */
+.ag-btn:focus-visible,
+.ag-icon-btn:focus-visible,
+.ag-nav__item:focus-visible,
+.ag-trends__item:focus-visible,
+.ag-action:focus-visible,
+.ag-menu__item:focus-visible,
+.ag-tab:focus-visible,
+.ag-notif__body:focus-visible,
+.ag-convo-row:focus-visible,
+.ag-people__row:focus-visible,
+.ag-roster__who:focus-visible,
+.ag-voice-name:focus-visible,
+.ag-circle-card:focus-visible,
+.ag-bubble__delete:focus-visible,
+.ag-report__history-toggle:focus-visible,
+.ag-tok:focus-visible,
+.ag-post__when:focus-visible {
+  outline: 2px solid var(--cf-accent);
+  outline-offset: 2px;
+  border-radius: var(--cf-radius-sm);
+}
+
+/* ---- narrower ---------------------------------------------------------- */
+
+/*
+ * Two breakpoints, and each one drops exactly one thing.
+ *
+ * 1100px: the right rail goes. It is search and a tag list — search has its own page, and the tag
+ *         list is a convenience. Nothing is lost that is not reachable another way.
+ *  820px: the left rail becomes a horizontal strip above the column rather than a bottom bar. A
+ *         fixed bottom bar covers the composer's Post button on exactly the phones it is meant to
+ *         help, and this surface's whole job is pressing that button.
+ */
+@media (max-width: 1100px) {
+  .ag-shell {
+    grid-template-columns: var(--ag-rail-nav) minmax(0, var(--ag-column));
+  }
+
+  .ag-rail--find {
+    display: none;
+  }
+}
+
+@media (max-width: 820px) {
+  .ag-shell {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--cf-space-md);
+    padding: var(--cf-space-md) var(--cf-space-sm) var(--cf-space-2xl);
+  }
+
+  .ag-rail--nav {
+    position: static;
+    gap: var(--cf-space-sm);
+  }
+
+  .ag-nav {
+    flex-direction: row;
+    overflow-x: auto;
+    padding-bottom: var(--cf-space-3xs);
+    scrollbar-width: thin;
+  }
+
+  .ag-nav__item {
+    white-space: nowrap;
+  }
+
+  /* The separator's rule becomes a left rule when the list turns horizontal. A top border on a row
+     item draws a line across the middle of the strip. */
+  .ag-nav__sep {
+    margin: 0 0 0 var(--cf-space-2xs);
+    padding: 0 0 0 var(--cf-space-2xs);
+    border-top: 0;
+    border-left: 1px solid var(--cf-line);
+  }
+
+  .ag-rail__write {
+    width: auto;
+    align-self: flex-start;
+  }
+
+  /* The circle's roster and the whisper list both stop being columns. */
+  .ag-circle__body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ag-whispers {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ag-whispers__list {
+    border-right: 0;
+    padding-right: 0;
+  }
+
+  /* One pane at a time. Exactly one rule decides which — see the note above `.ag-whispers`. */
+  .ag-whispers:not(.is-open) .ag-whispers__pane,
+  .ag-whispers.is-open .ag-whispers__list {
+    display: none;
+  }
+
+  .ag-profile__head {
+    flex-wrap: wrap;
+  }
+
+  .ag-relations {
+    margin-left: 0;
+    align-items: flex-start;
+  }
+
+  .ag-bubble {
+    max-width: 92%;
+  }
+}
+
+/* ---- less motion ------------------------------------------------------- */
+
+/*
+ * The estate's `ui.css` carries its own reduced-motion block, and this file must carry the local
+ * half: a reader who has asked their system for less motion has asked THIS page too, and the
+ * shared stylesheet cannot know about `--ag-*` classes it has never seen.
+ *
+ * `animation: none` on the loading dots rather than a slower pulse. A dimmed row of three dots is
+ * still legibly "waiting", which is the entire message.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .ag-dots > * {
+    animation: none;
+    opacity: 0.6;
+  }
+
+  .ag-btn,
+  .ag-icon-btn,
+  .ag-nav__item,
+  .ag-trends__item,
+  .ag-action,
+  .ag-tab,
+  .ag-people__row,
+  .ag-circle-card,
+  .ag-switch__track,
+  .ag-switch__knob {
+    transition: none;
+  }
+}

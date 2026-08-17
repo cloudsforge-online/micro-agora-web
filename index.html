@@ -1,0 +1,133 @@
+<!doctype html>
+<!--
+  data-cf-product picks the accent ramp and data-cf-substrate the ash ramp, both from
+  @cloudsforge/ui/tokens.css. They are on <html> and set STATICALLY here rather than by React,
+  because a page that paints before the attributes land flashes the default ember and then changes
+  colour.
+
+  'agora' — and this was checked rather than assumed. tokens.css declares a real
+  `[data-cf-product='agora']` block carrying the orchid #bf69a9, added in the same change as the
+  registry row. Naming a product with no block would fall through to the company ember in complete
+  silence, which tokens.css calls out by name — "a silent fallthrough is a latent bug, so every key
+  an app may set is declared". `admin` had that defect and `explorer` still does.
+  test/brand-chrome.test.ts asserts that the selector this file names really exists upstream.
+
+  'warm' is the ash ramp every product frontend in the estate uses.
+
+  data-cf-scheme="auto" follows the reader's operating system. It matters more here than on a
+  reference surface: this is a page somebody reads for twenty minutes at a time, and a page of text
+  that ignores a dark-mode preference at midnight is a page they close.
+-->
+<html lang="en-GB" data-cf-product="agora" data-cf-substrate="warm" data-cf-scheme="auto">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!--
+      `color-scheme`, spelled the way the standard spells it and not the way English does. It is not
+      a registered meta name under any other spelling, so a misspelling is inert rather than wrong —
+      explorer-web shipped `colour-scheme` for months and the browser drew light form controls on a
+      dark page the whole time. The composer on the first page of this surface is a <textarea>, so
+      the same defect would be visible immediately here.
+    -->
+    <meta name="color-scheme" content="dark light" />
+    <!--
+      The build that produced this bundle. Stamped by the Dockerfile, read by src/lib/obs.ts, and
+      the reason an error report can be pinned to the deploy that introduced it. It is an identity
+      rather than a configuration: it names the artefact, it does not tell it where it is running.
+    -->
+    <meta name="cf-release" content="dev" />
+    <!--
+      THE GOOGLE ANALYTICS MEASUREMENT ID, AND NOT THE GOOGLE ANALYTICS TAG.
+      ────────────────────────────────────────────────────────────────────────────────────────
+      There is deliberately no third-party analytics `<script src=…>` in this file and there must
+      never be one. The stock snippet fetches that script and sets a cookie on load, before any
+      banner has been drawn let alone answered; under ePrivacy Art. 5(3) an analytics cookie set
+      before consent is a violation that a banner underneath it does not cure.
+      `@cloudsforge/ui/consent` injects the tag from exactly one place: the Accept button in
+      `CookieBanner`.
+
+      IT MATTERS MORE ON THIS SURFACE THAN ON ANY OTHER IN THE ESTATE, AND CONSENT ALONE IS NOT
+      ENOUGH HERE. Every address on this surface names a person or a conversation —
+      `/v/<handle>`, `/p/<id>`, `/tag/<tag>`, `/search?q=…` — so a page view reported with its path
+      attached tells Google who a given browser was reading and what about. A reader who accepted
+      analytics agreed to be counted, not to have their reading list sent somewhere.
+
+      `@cloudsforge/ui/consent` has no hook for that: `grantConsent()` issues a plain
+      `gtag('config', id, …)`, and GA4 then takes `page_location` from `document.location` on its
+      own. So the redaction is done in THIS bundle, in `src/lib/analytics.ts`, which pushes a
+      `gtag('set', …)` carrying the route PATTERN (`/v/:handle`) in place of the concrete path
+      before the tag can load, and again on every navigation. `src/lib/obs.ts` does the same for
+      Lantern, which is first-party and still has no business storing it.
+    -->
+    <meta name="cf-analytics" content="G-ZFBLKK519K" />
+
+    <!--
+      THE DESCRIPTION SAYS WHOSE ACCOUNT IT IS, AND THAT IS THE POINT OF IT.
+
+      This string is what a search result and a link preview show, and a link-preview fetcher does
+      not execute JavaScript — so it is frequently the ONLY sentence a stranger reads before
+      deciding whether this is one more social network asking them to sign up. The fact that
+      decides it is that they already have the account, so that goes first.
+
+      It is byte-identical to SURFACE_DESCRIPTION in src/lib/hosts.ts, which is what the React app
+      writes into this same tag on every route, and test/seo.test.ts compares the two. Otherwise a
+      crawler that runs JavaScript and one that does not would read two different descriptions of
+      the same page, and the honest one would be whichever nobody remembered to update.
+    -->
+    <meta
+      name="description"
+      content="The CloudsForge public square. Talk about crypto, the chain, or anything else with the rest of the ecosystem — with the account you already have, and no second sign-up."
+    />
+
+    <!--
+      Brand chrome copied BYTE-IDENTICAL from brand/assets/site/ — test/brand-chrome.test.ts
+      compares the bytes in both directions.
+
+      THE COMPANY'S SET, NOT ANOTHER PRODUCT'S, AND THAT IS THE DECISION.
+
+      micro-brand has no `agora` set: there is no brand/assets/agora/ directory and no `agora` entry
+      in brand/plan.ts. Generating one from a frontend repository is the one place brand assets must
+      never come from, so something has to be borrowed — and every remaining candidate except the
+      parent is ANOTHER PRODUCT'S MARK. Forge Worlds' on a Forge Agora link preview does not read as
+      "no card yet", it reads as Forge Worlds. CloudsForge's own ridge-and-flame is the one card in
+      micro-brand that is true of every surface the estate serves.
+
+      test/brand-chrome.test.ts asserts that brand/assets/agora/ does NOT exist, so the day
+      micro-brand generates one is the day a test tells somebody to come back here.
+    -->
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/favicon-192x192.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/favicon-512x512.png" />
+    <link rel="apple-touch-icon" sizes="192x192" href="/favicon-192x192.png" />
+
+    <!--
+      ONE og block, not two. foresight-web/index.html declares og:type, og:title and og:description
+      twice — the second set silently wins in every crawler and the first is dead text nobody edits.
+      Reported there; not repeated here, and test/brand-chrome.test.ts counts each property.
+
+      og:description IS THE DESCRIPTION ABOVE, TO THE BYTE, and it did not start out that way.
+      `applyHead` writes og:description from the same string it writes the description from, so the
+      moment React mounts these two tags agree — and a hand-written shorter line here would be read
+      by exactly one audience: the link-preview fetchers that do not execute JavaScript. Two
+      sentences describing the same page, each shown to a different half of the internet, is the
+      drift the description comment above argues against, and it costs a card nothing to avoid.
+      test/seo.test.ts compares all three.
+
+      The image is a RELATIVE path so the card resolves against whichever origin served the page,
+      which is the same rule the rest of this bundle follows for hosts.
+    -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Forge Agora" />
+    <meta
+      property="og:description"
+      content="The CloudsForge public square. Talk about crypto, the chain, or anything else with the rest of the ecosystem — with the account you already have, and no second sign-up."
+    />
+    <meta property="og:image" content="/og-1200x630.png" />
+
+    <title>Forge Agora</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

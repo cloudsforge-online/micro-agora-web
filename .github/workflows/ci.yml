@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  ci:
+    uses: cloudsforge-online/micro-org/.github/workflows/web-ci.yml@main
+    with:
+      app: agora-web
+      # A route this app really has, checked to survive a hard refresh. `/circles` rather than
+      # `/p/<id>` — which is the address this surface actually cares about — because a post id is
+      # not a thing CI can invent, and `/circles` exercises the same half of `nginx.conf`: it is in
+      # the enumerated alternation, so if that list and `ROUTES` drift the check goes red here as
+      # well as in `routes.test.ts`. The unknown-path 404 check always runs alongside it.
+      deep-link-path: '/circles'
+    secrets:
+      # @cloudsforge/ui is unpublished and resolves through link:../ui/packages/ui, so the workflow
+      # checks micro-ui out as a sibling. It is private, so it needs a contents:read token — without
+      # one the checkout 404s, the `link:` specifier installs as a dangling symlink, and Typecheck
+      # cannot find a single @cloudsforge/ui export.
+      estate_token: ${{ secrets.ESTATE_READ_TOKEN }}
+    permissions:
+      contents: read
+      packages: read
+
+  # The image this repository ships, published where a deploy can pull it. Without this job the
+  # repository builds an image in CI and throws it away, and `cfctl release` writes a manifest
+  # naming an image that does not exist.
+  publish:
+    needs: ci
+    # Only a green main push publishes. Not a pull request, not a branch: a tag that can be
+    # produced by an unmerged change is a tag a release manifest cannot trust.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    uses: cloudsforge-online/micro-org/.github/workflows/publish-image.yml@main
+    with:
+      kind: web
+    secrets:
+      estate_token: ${{ secrets.ESTATE_READ_TOKEN }}
+    permissions:
+      contents: read
+      # `write`, and it must be granted HERE. A called workflow's token can only be reduced, never
+      # elevated, so publish-image.yml cannot ask for this on the caller's behalf — leaving it at
+      # `read` fails the run at startup rather than at the push.
+      packages: write
+
+  hygiene:
+    uses: cloudsforge-online/micro-org/.github/workflows/secret-hygiene.yml@main
+    permissions:
+      contents: read
