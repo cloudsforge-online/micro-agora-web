@@ -91,19 +91,56 @@ export function hosts(): CloudsForgeHosts {
 }
 
 /**
- * micro-agora's base path, on the network the reader is viewing.
+ * The port micro-agora binds in a development stack — `PORT` in `micro-agora/.env.example`, and the
+ * `devPort` on this surface's registry row. It is what a developer CALLS; vite serves 5197.
+ */
+const AGORA_API_DEV_PORT = 4150
+
+/**
+ * The API base for a development stack, and the empty string everywhere else.
  *
- * `viewedApiOrigin()` is `api.<apex>` for mainnet and `api-testnet.<apex>` for testnet, chosen by
- * the switcher in the bar rather than by the hostname this page happens to be served from. The
- * `/agora` prefix is the gateway's route to the service; the service itself mounts everything under
- * `/v1`, so a full address is `<origin>/agora/v1/timeline/latest`.
+ * In production the bundle and the service are ONE ORIGIN: nginx serves this bundle at
+ * `agora.<apex>` and micro-agora answers `/v1/...` behind the same hostname, which is the
+ * arrangement `pool.<apex>` and `explorer.<apex>` already have in `deploy/gateway/dynamic/
+ * estate-web.yml` — the bundle router matches the Host at priority 500, the API router matches Host
+ * plus `PathPrefix('/v1')` at 600. So the base is empty and every request stays relative.
+ *
+ * An UNREGISTERED placement resolves relative too, deliberately: composing
+ * `https://agora.<whatever-this-is>` for a preview deployment invents a hostname that does not
+ * exist, and the failure then presents as a network error rather than as the thing it is. A
+ * relative request at least reaches whatever is serving this bundle, and the shell says the
+ * placement is unregistered either way.
+ *
+ * Drawn by COMPARING HOSTNAMES rather than by a `DEV` flag, because a flag is a build-time constant
+ * and this repository has none: an image built for production and opened on localhost would then
+ * point at a host that is not there.
+ */
+export function resolveApiBase(hostname: string): string {
+  return isLocal(hostname) ? `http://localhost:${AGORA_API_DEV_PORT}` : ''
+}
+
+/**
+ * micro-agora's base URL, on the network the reader is VIEWING. Call it per request.
+ *
+ * Two layers answering two different questions. `resolveApiBase` answers "is this a development
+ * stack?" — the only case where the square is somewhere other than this origin — and stays a pure
+ * function of the hostname so `test/hosts.test.ts` can pin it without a browser. `viewedApiOrigin()`
+ * answers "is the reader looking at the other square?" and is `''` until they touch the switcher
+ * (micro-org#459), so in production this is the empty string and every request stays relative.
+ *
+ * The order matters. A local stack has no sibling estate to view — `NetworkSwitcher` hides itself
+ * off-registry — so the dev port wins outright and `viewedApiOrigin()` is never consulted there.
  *
  * A FUNCTION, NOT A CONSTANT, and that is load-bearing. A module-level string is captured on first
  * import and goes on naming the network the tab opened on; every read in this bundle calls this at
- * request time so that switching the network re-points the very next fetch.
+ * request time so that switching the network re-points the very next fetch — which is what makes
+ * the amber band above the timeline tell the truth.
  */
 export function apiBase(): string {
-  return `${viewedApiOrigin()}/agora`
+  return (
+    resolveApiBase(typeof window === 'undefined' ? '' : window.location.hostname) ||
+    viewedApiOrigin()
+  )
 }
 
 /** The page origin, or a stable placeholder when there is no document (tests). */

@@ -94,13 +94,19 @@ test('every network-dependent read goes through the viewed network, not the serv
   // The distinction this estate learned the hard way: the container serving the page and the square
   // the reader is looking at are different questions, and reading the first to answer the second is
   // why a testnet tile once showed mainnet numbers on four surfaces at once.
+  //
+  // `apiBase` reads the hostname too, and that is not the same mistake: the hostname decides ONLY
+  // whether this is a development stack, where there is no sibling estate to view at all. What this
+  // pins is that the viewed network is consulted for every other placement — take `viewedApiOrigin`
+  // out of the body and production goes back to answering from whichever container served the page.
   const hosts = sources.find((f) => f.path === 'src/lib/hosts.ts')?.text ?? ''
-  assert.match(hosts, /viewedApiOrigin\(\)/)
-  assert.doesNotMatch(
-    hosts,
-    /apiBase[\s\S]{0,200}window\.location\.hostname/,
-    'apiBase derives the API origin from the serving hostname rather than the viewed network',
-  )
+  const body = /export function apiBase\(\): string \{([\s\S]*?)\n\}/.exec(hosts)?.[1] ?? ''
+  assert.ok(body, 'apiBase is no longer a function declaration this test can read')
+  assert.match(body, /viewedApiOrigin\(\)/, 'apiBase does not consult the viewed network')
+  // The hostname may only reach `resolveApiBase`, which is the pure dev-stack question. A direct
+  // `https://…${hostname}` in this body would be a composed origin, and a composed origin is how a
+  // preview deployment ends up addressing a square that does not exist.
+  assert.doesNotMatch(body, /`https?:/, 'apiBase composes an origin out of the serving hostname')
 })
 
 test('the dev server port is unique in the estate and is not the service port', () => {

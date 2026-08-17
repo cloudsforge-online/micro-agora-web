@@ -99,13 +99,24 @@ first-party.
 One service, one base address, composed at request time:
 
 ```
-apiBase() → `${viewedApiOrigin()}/agora`      // → https://api.cloudsforge.online/agora/v1/…
+apiBase() → resolveApiBase(hostname) || viewedApiOrigin()
+
+  agora.cloudsforge.online   → ''                                    → /v1/…            (relative)
+  …viewing testnet           → 'https://agora-testnet.cloudsforge.online'
+  localhost:5197             → 'http://localhost:4150'               (micro-agora's own port)
 ```
 
-`viewedApiOrigin()` is `api.<apex>` for mainnet and `api-testnet.<apex>` for testnet — chosen by the
-**network the reader is viewing**, not by the hostname this bundle was served from. It is a function
-and not a module constant, and that is load-bearing: a string captured at import time goes on naming
-the network the tab opened on after the reader has switched away from it.
+In production the bundle and the service are **one origin**: nginx serves this bundle at
+`agora.<apex>` and micro-agora answers `/v1/…` behind the same hostname, which is the arrangement
+`pool.<apex>` and `explorer.<apex>` already have — the gateway's bundle router matches the Host at
+priority 500 and the API router matches Host plus `PathPrefix('/v1')` at 600.
+
+The two layers answer two different questions. `resolveApiBase` answers "is this a development
+stack", and stays a pure function of the hostname so `test/hosts.test.ts` can pin it without a
+browser. `viewedApiOrigin()` answers "is the reader looking at the other square", and is the empty
+string until they touch the switcher. It is a function and not a module constant, and that is
+load-bearing: a string captured at import time goes on naming the network the tab opened on after
+the reader has switched away from it.
 
 Agora is a surface where switching network in place matters more than usual. A person here may be
 three replies into a thread; teleporting them to Forge Network's testnet page would not lose a
