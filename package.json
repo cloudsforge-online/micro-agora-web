@@ -1,6 +1,6 @@
 {
   "name": "@cloudsforge/agora-web",
-  "version": "2026.8.77",
+  "version": "2026.8.78",
   "packageManager": "pnpm@11.9.0",
   "private": true,
   "description": "Forge Agora: the ecosystem's public square. Posts, replies, circles and whispers, on the CloudsForge account somebody already has.",
