@@ -17,6 +17,21 @@ jobs:
       # the enumerated alternation, so if that list and `ROUTES` drift the check goes red here as
       # well as in `routes.test.ts`. The unknown-path 404 check always runs alongside it.
       deep-link-path: '/circles'
+      # ── WHERE THIS BUNDLE LIVES INSIDE ITS OWN CONTAINER ─────────────────────────────────────
+      #
+      # `/agora`, wave 3c of the apex consolidation. Without this the shared workflow probes `/`,
+      # which a mounted image 404s CORRECTLY — the readiness loop would spin for twenty seconds
+      # and then report a healthy container as a dead one.
+      #
+      # `deep-link-path` above stays a ROUTER path and is prefixed with this, the same separation
+      # `src/lib/routes.ts` draws between a router path and a public one. Writing the mount into
+      # both would probe `/agora/agora/circles`.
+      #
+      # Declaring it also turns on two probes that exist only for a folder, and both assert a 404:
+      # `/` and `/robots.txt` must be empty here. An image built for `/agora` but copied to the
+      # document root answers 200 on `/` and would shadow the marketing site the moment it
+      # deployed.
+      base-path: '/agora'
     secrets:
       # @cloudsforge/ui is unpublished and resolves through link:../ui/packages/ui, so the workflow
       # checks micro-ui out as a sibling. It is private, so it needs a contents:read token — without

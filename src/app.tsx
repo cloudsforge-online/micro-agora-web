@@ -31,6 +31,8 @@
  */
 import { lazy, Suspense } from 'react'
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
+
+import { BASE } from './lib/routes.ts'
 import { ScrollToTop } from './components/scroll-to-top.tsx'
 import { AppShell } from './components/shell.tsx'
 import { Loading } from './components/states.tsx'
@@ -83,7 +85,7 @@ export function AppRoutes() {
 
 export function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={BASE}>
       <ScrollToTop />
       {/*
         `AuthProvider` is outside the router because the chrome reads it and the chrome is rendered

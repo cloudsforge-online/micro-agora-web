@@ -67,11 +67,14 @@ test('THE ROUTER MOUNTS EXACTLY THE TABLE, IN BOTH DIRECTIONS', () => {
 })
 
 test('NGINX ENUMERATES EVERY FIRST SEGMENT, AND THE INDEX IS EXACT', () => {
-  // `location = /` and not `location /`: the prefix form matches every address on the surface and
-  // turns the whole "an unknown path answers 404" argument in nginx.conf's header into a comment.
-  assert.match(nginx, /location\s*=\s*\/\s*\{/, 'nginx.conf has no exact-match location for the index')
+  // `location = /agora` and not `location /agora`: the prefix form matches every address under the
+  // mount and turns the whole "an unknown path answers 404" argument in nginx.conf's header into a
+  // comment. BOTH spellings of the front door are required — a folder has a trailing-slash form
+  // that a hostname root never had, and the 301 from the retired hostname lands on it.
+  assert.match(nginx, /location\s*=\s*\/agora\s*\{/, 'nginx.conf has no exact-match location for the index')
+  assert.match(nginx, /location\s*=\s*\/agora\/\s*\{/, 'nginx.conf does not serve the trailing-slash front door')
 
-  const alternation = /location\s+~\s+\^\/\(([^)]+)\)\(\/\|\$\)/.exec(nginx)?.[1]
+  const alternation = /location\s+~\s+\^\/agora\/\(([^)]+)\)\(\/\|\$\)/.exec(nginx)?.[1]
   assert.ok(alternation, 'nginx.conf has no enumerated route location, or its shape has changed')
   assert.deepEqual(
     alternation.split('|').sort(),
@@ -92,7 +95,10 @@ test('THE SPA FALLBACK IS ABSENT AND error_page IS PRESENT', () => {
     /try_files\s+\$uri\s+(\$uri\/\s+)?\/index\.html/,
     'nginx.conf has the SPA fallback — see its own header for why it must not',
   )
-  assert.match(nginx, /error_page\s+404\s+\/index\.html/)
+  // Mounted: the shell is `/agora/index.html`, and `error_page 404 /index.html` would point at a
+  // file the document root no longer holds — nginx would then serve its own 404 page, which is the
+  // "the visitor gets nginx's error page, not NotFoundPage" half of the rule above.
+  assert.match(nginx, /error_page\s+404\s+\/agora\/index\.html/)
 })
 
 test('every route location restates the security headers', () => {
