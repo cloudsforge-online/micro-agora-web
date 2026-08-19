@@ -21,6 +21,38 @@
  * redacted is this table rather than a regex somebody maintains twice.
  */
 
+/**
+ * ── WHERE THIS BUNDLE IS MOUNTED ─────────────────────────────────────────────────────────────
+ *
+ * Forge Agora used to be a hostname. It is a FOLDER on the apex now: `/agora`, wave 3c of the
+ * consolidation argued in micro-deploy `docs/apex-consolidation.md`. The registry says the same
+ * thing in one line — `subdomain: ''`, `basePath: '/agora'`.
+ *
+ *   A ROUTER PATH is what `react-router` matches, relative to the mount: `p/:id`. Everything in
+ *     `ROUTES` below, every `<Link to>`, and `routePattern()`. `basename` in `src/app.tsx` puts
+ *     the prefix back, so a router path that already carried it would render `/agora/agora/p/1`.
+ *
+ *   A PUBLIC PATH is what the address bar shows and what a crawler is handed: `/agora/p/:id`.
+ *     Every `<loc>` in the sitemap, every `Disallow:` and every `location` in `nginx.conf`.
+ *
+ * `publicPath()` is the one crossing and the only place `BASE` is concatenated.
+ *
+ * ── AND `routePattern()` KEEPS REPORTING THE ROUTER PATH, DELIBERATELY ───────────────────────
+ *
+ * `lib/analytics.ts` and `lib/obs.ts` redact `/v/nefeli` to `/v/:handle` before anything leaves
+ * the browser. Prefixing those with the mount would put `/agora` in front of every analytics
+ * event for no gain — the property already knows which site it is — and would silently change
+ * every existing report's path. The redaction is about WHICH ADDRESSES ARE PRIVATE, and that
+ * question is answered by the route table, which is mount-independent.
+ */
+export const BASE = '/agora'
+
+/** A router path as a public one. No trailing slash: the square is `/agora`, not `/agora/`. */
+export function publicPath(path: string): string {
+  const rooted = path.startsWith('/') ? path : `/${path}`
+  return rooted === '/' ? BASE : `${BASE}${rooted}`
+}
+
 export interface AppRoute {
   /** The router path, without a leading slash. The index route is the empty string. */
   readonly path: string

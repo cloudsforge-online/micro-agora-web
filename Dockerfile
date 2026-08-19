@@ -64,7 +64,12 @@ RUN sed -i "s|name=\"cf-release\" content=\"dev\"|name=\"cf-release\" content=\"
 FROM nginxinc/nginx-unprivileged:1.27-alpine AS runtime
 
 COPY nginx.conf /etc/nginx/conf.d/default.conf
-COPY --from=build /app/dist /usr/share/nginx/html
+# ── INTO A FOLDER, BECAUSE THE SURFACE IS ONE ───────────────────────────────────────────────
+#
+# `/agora`, matching `base:` in vite.config.ts and every `location` in nginx.conf. A bundle built
+# for `/agora/assets/…` and copied to the document root would 404 on every asset while `GET /`
+# answered 200 with a shell that cannot start — the failure this line's destination prevents.
+COPY --from=build /app/dist /usr/share/nginx/html/agora
 
 EXPOSE 8080
 

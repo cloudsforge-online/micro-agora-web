@@ -19,6 +19,16 @@ import { defineConfig } from 'vite'
  * disagree.
  */
 export default defineConfig({
+  // ── AND ONE THING THAT *IS* BAKED IN, WHICH THE PARAGRAPH ABOVE DOES NOT CONTRADICT ────────
+  //
+  // `base` is not an environment. It is WHERE ON ANY ORIGIN this bundle lives, and it is the same
+  // string on localhost, on a preview deployment and on both production estates — `/agora`, from
+  // the registry. It has to be a build-time constant because it goes in front of every hashed
+  // asset name in the emitted `index.html`, which is written once at build.
+  //
+  // The trailing slash is required by vite and is not cosmetic: `base: '/agora'` emits
+  // `/agoraassets/index-a1b2.js`.
+  base: '/agora/',
   plugins: [react()],
   resolve: {
     // @cloudsforge/ui is a `link:` dependency, so its own node_modules holds a second copy of

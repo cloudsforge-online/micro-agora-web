@@ -24,8 +24,9 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { canonicalHref, metaTags, surfaceMeta } from '@cloudsforge/ui/seo'
+import { surface } from '@cloudsforge/ui/surfaces'
 import { PRODUCT, SURFACE_DESCRIPTION } from '../src/lib/hosts.ts'
-import { ROUTES } from '../src/lib/routes.ts'
+import { ROUTES, publicPath } from '../src/lib/routes.ts'
 import { read, sourceFiles, stripComments } from './sources.ts'
 
 const html = read('index.html')
@@ -125,13 +126,20 @@ test('THE CANONICAL CARRIES THE CONCRETE PATH, WHICH IS THE OPPOSITE OF THE ANAL
   // A canonical of `/v/:handle` would collapse every profile into one document. The audiences are
   // different: a third party is told the pattern, a crawler is told the address of a page that is
   // already public and that it can already fetch.
+  // ── AND IT CARRIES THE MOUNT, WHICH IS THE OTHER HALF OF "CONCRETE" ────────────────────────
+  //
+  // `agora.cloudsforge.online` is a hostname that 301s now; the square is `<apex>/agora`. A
+  // canonical composed without the mount would name `<apex>/v/nefeli`, an address that 404s,
+  // declared as the preferred one — which is the live defect wave 3b found on three surfaces that
+  // had already moved (micro-ui#30, #31). `seo.ts` adds the mount from the registry, for surfaces
+  // that serve their own bundle; this asserts the result rather than trusting it.
   assert.equal(
-    canonicalHref(surfaceMeta(PRODUCT, { path: '/v/nefeli' }), 'https://agora.cloudsforge.online'),
-    'https://agora.cloudsforge.online/v/nefeli',
+    canonicalHref(surfaceMeta(PRODUCT, { path: '/v/nefeli' }), 'https://cloudsforge.online'),
+    'https://cloudsforge.online/agora/v/nefeli',
   )
   // A trailing slash is the classic way one page acquires two addresses and splits its indexing.
-  assert.equal(surfaceMeta(PRODUCT, { path: '/circles/' }).path, '/circles')
-  assert.equal(surfaceMeta(PRODUCT, { path: '/' }).path, '/')
+  assert.equal(surfaceMeta(PRODUCT, { path: '/circles/' }).path, '/agora/circles')
+  assert.equal(surfaceMeta(PRODUCT, { path: '/' }).path, '/agora')
 })
 
 test('the origin is read at call time, so one artefact composes correct absolute URLs everywhere', () => {
@@ -140,16 +148,36 @@ test('the origin is read at call time, so one artefact composes correct absolute
   // another, which is the one SEO mistake that hands your traffic to a different hostname.
   assert.match(shell, /window\.location\.origin/)
   const tags = metaTags(surfaceMeta(PRODUCT, { path: '/p/abc' }), 'https://example.test')
-  assert.equal(tags.find((t) => t.key === 'og:url')?.content, 'https://example.test/p/abc')
+  assert.equal(tags.find((t) => t.key === 'og:url')?.content, 'https://example.test/agora/p/abc')
   assert.equal(
     metaTags(surfaceMeta(PRODUCT, { path: '/p/abc' }), '').find((t) => t.key === 'og:url')?.content,
-    '/p/abc',
+    '/agora/p/abc',
+  )
+  // The og:image moves with it. Every consolidated surface advertised micro-site's card until
+  // micro-ui#32 — an address that RESOLVES, so there was no 404 to notice: the square's link
+  // previews simply carried the company's artwork instead of its own.
+  assert.match(
+    tags.find((t) => t.key === 'og:image')?.content ?? '',
+    /^https:\/\/example\.test\/agora\//,
+    'the social card is not served from this surface\u2019s own folder',
   )
 })
 
-test('robots.txt disallows the reader OWN pages, and says why each one is there', () => {
-  const disallowed = [...nginx.matchAll(/^Disallow: (\S+)$/gm)].map((m) => m[1] ?? '')
-  assert.deepEqual(disallowed, [
+test('THE robots.txt IS GONE FROM THIS REPOSITORY, AND ITS RULES ARE IN THE REGISTRY', () => {
+  // A robots.txt is read from the ORIGIN ROOT and nowhere else. `<apex>/agora/robots.txt` is a file
+  // no crawler will ever request, so a `location = /robots.txt` here could only be dead
+  // configuration that READS like a policy — the most expensive kind, because the rule looks
+  // enforced and is not.
+  assert.doesNotMatch(nginx, /location\s*=\s*\/robots\.txt/, 'this surface still serves a robots.txt')
+  assert.doesNotMatch(nginx, /^Disallow:/m, 'a Disallow survived in a document nothing fetches')
+  assert.doesNotMatch(nginx, /^User-agent:/m)
+
+  // The rules are NOT dropped. They live on this surface's registry row, and micro-site derives
+  // `Disallow: /agora<path>` for each — see `noIndexPaths` in `ui/packages/ui/src/surfaces.ts` and
+  // the deriving test in `site/test/routes.test.ts`. Asserted from the registry rather than from a
+  // second copy here, so the two cannot drift.
+  const disallowed = surface(PRODUCT).noIndexPaths ?? []
+  assert.deepEqual([...disallowed], [
     '/home',
     '/notifications',
     '/whispers',
@@ -162,7 +190,7 @@ test('robots.txt disallows the reader OWN pages, and says why each one is there'
   for (const path of disallowed) {
     assert.ok(
       ROUTES.some((r) => `/${r.path}` === path),
-      `robots.txt disallows ${path}, which is not a route`,
+      `the registry disallows ${path} on this surface, which is not a route`,
     )
   }
   // `/search` is public and disallowed for the ordinary reason — an infinite query space is a
@@ -170,27 +198,31 @@ test('robots.txt disallows the reader OWN pages, and says why each one is there'
   assert.equal(ROUTES.find((r) => r.path === 'search')?.private, false)
 })
 
-test('the one private route robots.txt does NOT disallow is covered by the head instead', () => {
+test('the one private route the registry does NOT disallow is covered by the head instead', () => {
   // `/moderation`. Nothing links to it, so no crawler finds it; and if one did, `useTitle` writes
-  // `noindex, nofollow` from the same `private` flag. Listing it in robots.txt would publish the
-  // address of the operator console in a file whose entire purpose is being read by strangers.
-  const disallowed = [...nginx.matchAll(/^Disallow: (\S+)$/gm)].map((m) => m[1] ?? '')
+  // `noindex, nofollow` from the same `private` flag. Listing it would publish the address of the
+  // operator console in a file whose entire purpose is being read by strangers — and moving the
+  // rules to the apex makes that worse, not better: the apex robots.txt is the FIRST file anyone
+  // curious about this estate opens.
+  const disallowed = surface(PRODUCT).noIndexPaths ?? []
   const uncovered = ROUTES.filter((r) => r.private && !disallowed.includes(`/${r.path}`))
   assert.deepEqual(uncovered.map((r) => r.path), ['moderation'])
 })
 
 test('THE SITEMAP LISTS THREE ADDRESSES, AND THE ABSENCES ARE THE DECISION', () => {
   const locs = [...nginx.matchAll(/<loc>\$scheme:\/\/\$host([^<]*)<\/loc>/g)].map((m) => m[1] ?? '')
-  assert.deepEqual(locs, ['', '/circles', '/guidelines'])
+  // Mounted. `<loc>$scheme://$host</loc>` would now name the APEX — micro-site's front page — in
+  // this surface's own account of what it publishes.
+  assert.deepEqual(locs, ['/agora', '/agora/circles', '/agora/guidelines'])
   // `/p/<id>`, `/v/<handle>` and `/tag/<tag>` are public, indexable, and deliberately not listed. A
   // sitemap is this site's own account of what it publishes; every one of those is somebody's words
   // or somebody's name, and an entry saying "we publish this, come back for it" outlives a delete.
   for (const listed of locs) {
     assert.ok(!listed.includes(':'), 'the sitemap carries a route pattern')
     assert.equal(
-      ROUTES.some((r) => `/${r.path}` === (listed || '') || (listed === '' && r.path === '')),
+      ROUTES.some((r) => publicPath(r.path) === listed),
       true,
-      `the sitemap lists ${listed || '/'}, which is not a route`,
+      `the sitemap lists ${listed}, which is not a route`,
     )
   }
 })
@@ -199,8 +231,12 @@ test('every environment but mainnet refuses every crawler, whole', () => {
   // A testnet square indexed beside the mainnet one is two results for the same name, and the wrong
   // one is roughly half the traffic. `$cf_env` is set for every hostname carrying an environment
   // label, and both documents branch on it before they emit anything.
-  assert.match(nginx, /if \(\$cf_env\) \{ return 200 'User-agent: \*\\nDisallow: \/\\n'; \}/)
+  // ONE of the two branches is left here. The robots half moved to micro-site with the document
+  // itself, and micro-site already had the identical `if ($cf_env)` refusal — so a testnet apex
+  // answers `Disallow: /`, which covers this surface by construction rather than by a second copy
+  // of the rule living in a file nothing fetches.
   assert.match(nginx, /if \(\$cf_env\) \{ return 404; \}/)
+  assert.doesNotMatch(nginx, /User-agent/, 'a robots document survived the move')
 })
 
 test('the sitemap is absolute and composed by nginx, not built into the artefact', () => {
@@ -209,5 +245,7 @@ test('the sitemap is absolute and composed by nginx, not built into the artefact
   // the stack that knows the answer without the answer being baked in.
   assert.ok(!bare.includes('sitemap.xml') || true)
   assert.doesNotMatch(nginx, /<loc>https:\/\/[a-z]/, 'the sitemap hard-codes a hostname')
-  assert.match(nginx, /Sitemap: \$scheme:\/\/\$host\/sitemap\.xml/)
+  // And the `Sitemap:` LINE moved with the robots.txt: micro-site announces
+  // `https://$host/agora/sitemap.xml` from the one robots.txt this origin has.
+  assert.doesNotMatch(nginx, /Sitemap:/, 'a Sitemap: line survived in a document nothing fetches')
 })

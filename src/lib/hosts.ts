@@ -9,6 +9,7 @@
  * reader switched away from it.
  */
 import { cloudsforgeHosts, type CloudsForgeHosts, type SurfaceKey } from '@cloudsforge/ui'
+import { BASE } from './routes.ts'
 import { viewedApiOrigin } from './viewed.ts'
 
 /**
@@ -97,19 +98,24 @@ export function hosts(): CloudsForgeHosts {
 const AGORA_API_DEV_PORT = 4150
 
 /**
- * The API base for a development stack, and the empty string everywhere else.
+ * The API base for a DEVELOPMENT STACK, and the empty string everywhere else.
  *
- * In production the bundle and the service are ONE ORIGIN: nginx serves this bundle at
- * `agora.<apex>` and micro-agora answers `/v1/...` behind the same hostname, which is the
- * arrangement `pool.<apex>` and `explorer.<apex>` already have in `deploy/gateway/dynamic/
- * estate-web.yml` — the bundle router matches the Host at priority 500, the API router matches Host
- * plus `PathPrefix('/v1')` at 600. So the base is empty and every request stays relative.
+ * One question only: "is micro-agora somewhere other than this origin?" It is, exactly once — under
+ * `pnpm dev`, where the service runs directly on 4150 with no gateway in front of it. Everywhere
+ * else the answer is "no, it is on this origin", and the empty string says so.
  *
- * An UNREGISTERED placement resolves relative too, deliberately: composing
- * `https://agora.<whatever-this-is>` for a preview deployment invents a hostname that does not
- * exist, and the failure then presents as a network error rather than as the thing it is. A
- * relative request at least reaches whatever is serving this bundle, and the shell says the
- * placement is unregistered either way.
+ * ── THE MOUNT IS DELIBERATELY NOT HERE ────────────────────────────────────────────────────────
+ *
+ * Wave 3c made this bundle `<apex>/agora`, so a production read is `/agora/v1/...` rather than
+ * `/v1/...`. That prefix belongs to `apiBase()` below, not to this function, and the separation is
+ * not tidiness:
+ *
+ *   * this function is a PURE FUNCTION OF THE HOSTNAME, which is what lets `test/hosts.test.ts`
+ *     pin it without a browser, and a mount is not a fact about a hostname;
+ *   * the dev branch must NOT carry the mount — there is no gateway under `pnpm dev` and
+ *     therefore nothing to strip `/agora` back off, so `localhost:4150/agora/v1` would 404;
+ *   * and `apiBase()` has to compose the mount with the VIEWED ESTATE's origin anyway, which this
+ *     function knows nothing about.
  *
  * Drawn by COMPARING HOSTNAMES rather than by a `DEV` flag, because a flag is a build-time constant
  * and this repository has none: an image built for production and opened on localhost would then
@@ -122,14 +128,33 @@ export function resolveApiBase(hostname: string): string {
 /**
  * micro-agora's base URL, on the network the reader is VIEWING. Call it per request.
  *
- * Two layers answering two different questions. `resolveApiBase` answers "is this a development
- * stack?" — the only case where the square is somewhere other than this origin — and stays a pure
- * function of the hostname so `test/hosts.test.ts` can pin it without a browser. `viewedApiOrigin()`
- * answers "is the reader looking at the other square?" and is `''` until they touch the switcher
- * (micro-org#459), so in production this is the empty string and every request stays relative.
+ * THREE questions now, and separating them is what keeps the network switcher working:
  *
- * The order matters. A local stack has no sibling estate to view — `NetworkSwitcher` hides itself
- * off-registry — so the dev port wins outright and `viewedApiOrigin()` is never consulted there.
+ *   1. `resolveApiBase` — "is this a development stack?" The only case where micro-agora is
+ *      somewhere other than this origin. A pure function of the hostname, so `test/hosts.test.ts`
+ *      can pin it without a browser.
+ *   2. `viewedApiOrigin()` — "WHICH ESTATE is the reader looking at?" An ORIGIN, or `''` while
+ *      they are reading the one that served this page (micro-org#459).
+ *   3. `BASE` — "WHERE UNDER that estate does the square live?" `/agora`, since wave 3c.
+ *
+ * ── 2 AND 3 ARE DIFFERENT QUESTIONS, AND CONFLATING THEM BREAKS THE SWITCHER ──────────────────
+ *
+ * This was `resolveApiBase(...) || viewedApiOrigin()`, and the `||` was correct only while the
+ * production answer to 1 was the empty string. The first version of this change made
+ * `resolveApiBase` return the mount, which is truthy — so `viewedApiOrigin()` STOPPED BEING
+ * CONSULTED AT ALL, and pressing Testnet in the bar would have gone on reading mainnet while the
+ * amber band said otherwise. On a surface where the whole point is that a post lands in the square
+ * the reader believes they are in, that is the worst failure this bundle has.
+ *
+ * micro-ui's registry says the same thing on `explorer`'s row, which is parked for a harder
+ * version of it: "a consolidated surface's reads are origin PLUS MOUNT, so every caller has to
+ * learn the difference between which estate and where under it". Agora is the easy version —
+ * nothing here keys AUTH on the origin, so the bearer goes to either estate as it always did, and
+ * the composition below is the whole change.
+ *
+ * The dev branch returns early rather than composing, because a local stack has no gateway to
+ * strip `/agora` back off and no sibling estate to view — `NetworkSwitcher` hides itself
+ * off-registry.
  *
  * A FUNCTION, NOT A CONSTANT, and that is load-bearing. A module-level string is captured on first
  * import and goes on naming the network the tab opened on; every read in this bundle calls this at
@@ -137,10 +162,11 @@ export function resolveApiBase(hostname: string): string {
  * the amber band above the timeline tell the truth.
  */
 export function apiBase(): string {
-  return (
-    resolveApiBase(typeof window === 'undefined' ? '' : window.location.hostname) ||
-    viewedApiOrigin()
-  )
+  const dev = resolveApiBase(typeof window === 'undefined' ? '' : window.location.hostname)
+  if (dev) return dev
+  // `''` + `/agora` when reading this estate; `https://testnet.<apex>` + `/agora` when reading the
+  // other one. Same mount either way — both estates serve the square from the same folder.
+  return `${viewedApiOrigin()}${BASE}`
 }
 
 /** The page origin, or a stable placeholder when there is no document (tests). */
