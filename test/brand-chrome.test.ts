@@ -26,6 +26,7 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { ACCENT_SURFACE, PRODUCT } from '../src/lib/hosts.ts'
 import { ROOT, SIBLINGS, read, readSibling, stripComments } from './sources.ts'
+import { BASE } from '../src/lib/routes.ts'
 
 const html = read('index.html')
 const bare = stripComments(html, 'html')
@@ -128,7 +129,7 @@ test('EACH OPEN GRAPH PROPERTY IS DECLARED EXACTLY ONCE', () => {
 test('the card image is a relative path, like every other address in this bundle', () => {
   // So it resolves against whichever origin served the page. An absolute one would make a preview
   // deployment's card point at production, which is the same class of mistake as a baked-in API.
-  assert.match(bare, /property="og:image" content="\/og-1200x630\.png"/)
+  assert.match(bare, new RegExp(`property="og:image" content="${BASE}/og-1200x630\.png"`))
 })
 
 test('THERE IS NO ANALYTICS SCRIPT TAG, AND THE MEASUREMENT ID IS NOT ONE', () => {
