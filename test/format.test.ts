@@ -174,7 +174,33 @@ test('the relative form stops at a week and becomes a date', () => {
   assert.equal(ago(minutesAgo(60 * 24 * 6), NOW), '6d')
   // "43d" is not a unit anybody converts in their head. Past a week the actual date is the more
   // useful fact, which is the opposite of the usual instinct to keep counting.
-  assert.match(ago(minutesAgo(60 * 24 * 43), NOW), /^\d+ \w+$/)
+  assert.equal(ago(minutesAgo(60 * 24 * 43), NOW), '5 Jul')
+})
+
+test('every month abbreviates to three letters, September included', () => {
+  // ── THE CASE THIS FILE USED TO GET WRONG ────────────────────────────────────────────────────
+  //
+  // What stood here was `assert.match(…, /^\d+ \w+$/)`, which `Sept` satisfies perfectly — and
+  // `Sept` is exactly what `toLocaleDateString('en-GB', { month: 'short' })` returns for September
+  // and for no other month. A shape assertion cannot catch a value defect, and the value is the
+  // whole point of a fixed-width label.
+  //
+  // Twelve FIXED dates rather than offsets from a moving `NOW`: an expectation computed from the
+  // day the suite runs is green for eleven months of the year, which is how this reached
+  // production in the first place.
+  const months = [
+    ['2026-01-15', '15 Jan'], ['2026-02-15', '15 Feb'], ['2026-03-15', '15 Mar'],
+    ['2026-04-15', '15 Apr'], ['2026-05-15', '15 May'], ['2026-06-15', '15 Jun'],
+    ['2026-07-15', '15 Jul'], ['2026-08-15', '15 Aug'], ['2026-09-15', '15 Sep'],
+    ['2026-10-15', '15 Oct'], ['2026-11-15', '15 Nov'], ['2026-12-15', '15 Dec'],
+  ] as const
+  for (const [day, expected] of months) {
+    const asked = Date.parse(`${day}T12:00:00.000Z`)
+    // Eight weeks after the date, so `ago` is past its one-week cliff and returns the date form.
+    assert.equal(ago(new Date(asked).toISOString(), asked + 56 * 24 * 60 * 60_000), expected)
+  }
+  // And the property the table exists for, asserted directly rather than inferred from the twelve.
+  for (const [, expected] of months) assert.equal(expected.split(' ')[1]?.length, 3)
 })
 
 test('an unparseable timestamp renders as nothing, not as NaN', () => {

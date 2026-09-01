@@ -13,6 +13,38 @@ const HOUR = 60 * MINUTE
 const DAY = 24 * HOUR
 
 /**
+ * The three-letter month names, written out rather than asked of the runtime.
+ *
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ * **`month: 'short'` IS NOT THREE LETTERS IN en-GB, AND THE MONTH IT IS NOT IS SEPTEMBER.**
+ *
+ * `new Date('2026-09-01').toLocaleDateString('en-GB', { month: 'short' })` is `Sept`. Every other
+ * month is three characters; September is four. That is CLDR's en-GB data rather than a bug in any
+ * runtime, and it means {@link ago} silently changes width for the thirty days of September in a
+ * timeline where every other entry is `5m`, `2h` or `6d` — short, aligned, and scanned rather than
+ * read.
+ *
+ * It shipped because it cannot be found by reading: eleven months out of twelve agree with the
+ * intent. `hub-web` hit it first, on 2026-08-31, when a suite that built its expectation from a
+ * date thirty days out finally landed in September; this bundle's own case was `/^\d+ \w+$/`,
+ * which `Sept` satisfies perfectly.
+ *
+ * The fix is not a different locale. `en-US` happens to give `Sep` today, which would make the
+ * format depend on the CLDR revision the runtime was built with and on whether it is a full-icu
+ * build at all — a small-icu Node falls back to `en-US` whatever is asked for, so the same bundle
+ * would render two different strings on two hosts. A literal table is the same twelve answers
+ * everywhere, for ever.
+ *
+ * {@link exact} keeps `month: 'long'` deliberately: it is prose in a tooltip rather than a column,
+ * `17 September 2026` is what a reader expects there, and no width depends on it.
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ */
+const SHORT_MONTHS = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+] as const
+
+/**
  * How long ago, in the shortest honest form.
  *
  * `now` is a parameter rather than a call to `Date.now()` so the function is testable and so a list
@@ -31,7 +63,8 @@ export function ago(iso: string, now: number): string {
   if (delta < HOUR) return `${Math.floor(delta / MINUTE)}m`
   if (delta < DAY) return `${Math.floor(delta / HOUR)}h`
   if (delta < 7 * DAY) return `${Math.floor(delta / DAY)}d`
-  return new Date(then).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+  const at = new Date(then)
+  return `${at.getDate()} ${SHORT_MONTHS[at.getMonth()]}`
 }
 
 /**
